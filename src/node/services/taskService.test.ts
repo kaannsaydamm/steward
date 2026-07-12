@@ -7292,7 +7292,7 @@ describe("TaskService", () => {
       type: "stream-end",
       workspaceId: rootWorkspaceId,
       messageId: assistantMessageId,
-      metadata: { model: "openai:gpt-5.2" },
+      metadata: { model: "openai:gpt-5.2", finishReason: "stop" },
       parts: [
         {
           type: "dynamic-tool",
@@ -7369,7 +7369,7 @@ describe("TaskService", () => {
       type: "stream-end",
       workspaceId: rootWorkspaceId,
       messageId: assistantMessageId,
-      metadata: { model: "openai:gpt-5.2" },
+      metadata: { model: "openai:gpt-5.2", finishReason: "stop" },
       parts: [
         {
           type: "dynamic-tool",
@@ -8546,7 +8546,7 @@ describe("TaskService", () => {
       type: "stream-end",
       workspaceId: childTaskId,
       messageId: "assistant-child-output",
-      metadata: { model: "openai:gpt-5.2" },
+      metadata: { model: "openai:gpt-5.2", finishReason: "stop" },
       parts: [
         {
           type: "dynamic-tool",
@@ -8566,6 +8566,7 @@ describe("TaskService", () => {
             },
           },
         },
+        { type: "text", text: "Hello from child" },
       ],
     });
 
@@ -8634,7 +8635,7 @@ describe("TaskService", () => {
       type: "stream-end",
       workspaceId: childTaskId,
       messageId: "assistant-workflow-child-output",
-      metadata: { model: "openai:gpt-5.2" },
+      metadata: { model: "openai:gpt-5.2", finishReason: "stop" },
       parts: [
         {
           type: "dynamic-tool",
@@ -8647,6 +8648,7 @@ describe("TaskService", () => {
           state: "output-available",
           output: { success: true },
         },
+        { type: "text", text: "Workflow step report" },
       ],
     });
 
@@ -8706,7 +8708,7 @@ describe("TaskService", () => {
       type: "stream-end",
       workspaceId: backgroundChildId,
       messageId: "assistant-background-output",
-      metadata: { model: "openai:gpt-5.2" },
+      metadata: { model: "openai:gpt-5.2", finishReason: "stop" },
       parts: [
         {
           type: "dynamic-tool",
@@ -8716,6 +8718,7 @@ describe("TaskService", () => {
           state: "output-available",
           output: { success: true },
         },
+        { type: "text", text: "Background result" },
       ],
     });
     await flushTerminalAttentionDrains(taskService);
@@ -8727,7 +8730,7 @@ describe("TaskService", () => {
       type: "stream-end",
       workspaceId: foregroundChildId,
       messageId: "assistant-foreground-output",
-      metadata: { model: "openai:gpt-5.2" },
+      metadata: { model: "openai:gpt-5.2", finishReason: "stop" },
       parts: [
         {
           type: "dynamic-tool",
@@ -8737,6 +8740,7 @@ describe("TaskService", () => {
           state: "output-available",
           output: { success: true },
         },
+        { type: "text", text: "Foreground result" },
       ],
     });
 
@@ -8797,7 +8801,7 @@ describe("TaskService", () => {
       type: "stream-end",
       workspaceId: childTaskId,
       messageId: "assistant-child-output",
-      metadata: { model: "openai:gpt-5.2" },
+      metadata: { model: "openai:gpt-5.2", finishReason: "stop" },
       parts: [
         {
           type: "dynamic-tool",
@@ -8807,6 +8811,7 @@ describe("TaskService", () => {
           state: "output-available",
           output: { success: true },
         },
+        { type: "text", text: "Hello from child" },
       ],
     });
 
@@ -8863,7 +8868,7 @@ describe("TaskService", () => {
       type: "stream-end",
       workspaceId: childTaskId,
       messageId: "assistant-child-output",
-      metadata: { model: "openai:gpt-5.2" },
+      metadata: { model: "openai:gpt-5.2", finishReason: "stop" },
       parts: [
         {
           type: "dynamic-tool",
@@ -8873,6 +8878,7 @@ describe("TaskService", () => {
           state: "output-available",
           output: { success: true },
         },
+        { type: "text", text: "Hello from child" },
       ],
     });
 
@@ -11573,6 +11579,7 @@ describe("TaskService", () => {
           state: "output-available",
           output: { success: true },
         },
+        { type: "text", text: "Premature report" },
       ],
     });
 
@@ -12069,6 +12076,7 @@ describe("TaskService", () => {
           state: "output-available",
           output: { success: true },
         },
+        { type: "text", text: "Hello from child" },
       ]
     );
     const writeChildPartial = await partialService.writePartial(childId, childPartial);
@@ -12082,7 +12090,7 @@ describe("TaskService", () => {
       type: "stream-end",
       workspaceId: childId,
       messageId: "assistant-child-partial",
-      metadata: { model: "test-model" },
+      metadata: { model: "test-model", finishReason: "stop" },
       parts: childPartial.parts as StreamEndEvent["parts"],
     });
 
@@ -12329,6 +12337,7 @@ describe("TaskService", () => {
           state: "output-available",
           output: { success: true },
         },
+        { type: "text", text: params.reportMarkdown },
       ]
     );
     expect((await params.partialService.writePartial(params.childId, childPartial)).success).toBe(
@@ -12340,7 +12349,7 @@ describe("TaskService", () => {
       type: "stream-end",
       workspaceId: params.childId,
       messageId: `assistant-${params.childId}-partial`,
-      metadata: { model: "test-model" },
+      metadata: { model: "test-model", finishReason: "stop" },
       parts: childPartial.parts as StreamEndEvent["parts"],
     });
   }
@@ -12799,6 +12808,7 @@ describe("TaskService", () => {
           state: "output-available",
           output: { success: true },
         },
+        { type: "text", text: "Report from child one" },
       ]
     );
     expect((await partialService.writePartial(childOneId, childPartial)).success).toBe(true);
@@ -12808,7 +12818,7 @@ describe("TaskService", () => {
       type: "stream-end",
       workspaceId: childOneId,
       messageId: `assistant-${childOneId}-partial`,
-      metadata: { model: "test-model" },
+      metadata: { model: "test-model", finishReason: "stop" },
       parts: childPartial.parts as StreamEndEvent["parts"],
     });
 
@@ -12931,6 +12941,7 @@ describe("TaskService", () => {
             state: "output-available",
             output: { success: true },
           },
+          { type: "text", text: reportMarkdown },
         ]
       );
       expect((await partialService.writePartial(childId, childPartial)).success).toBe(true);
@@ -12940,7 +12951,7 @@ describe("TaskService", () => {
         type: "stream-end",
         workspaceId: childId,
         messageId: `assistant-${childId}-partial`,
-        metadata: { model: "test-model" },
+        metadata: { model: "test-model", finishReason: "stop" },
         parts: childPartial.parts as StreamEndEvent["parts"],
       });
     }
@@ -12963,14 +12974,14 @@ describe("TaskService", () => {
       type: "stream-end",
       workspaceId: childTwoId,
       messageId: "assistant-child-two-interrupted",
-      metadata: { model: "test-model" },
+      metadata: { model: "test-model", finishReason: "stop" },
       parts: [],
     });
     await handleTaskServiceStreamEndForTest(taskService, {
       type: "stream-end",
       workspaceId: childTwoId,
       messageId: "assistant-child-two-interrupted-repeat",
-      metadata: { model: "test-model" },
+      metadata: { model: "test-model", finishReason: "stop" },
       parts: [],
     });
 
@@ -13073,6 +13084,7 @@ describe("TaskService", () => {
           state: "output-available",
           output: { success: true },
         },
+        { type: "text", text: "Hello from child" },
       ]
     );
     const writeChildPartial = await partialService.writePartial(childId, childPartial);
@@ -13090,7 +13102,7 @@ describe("TaskService", () => {
       type: "stream-end",
       workspaceId: childId,
       messageId: "assistant-child-partial",
-      metadata: { model: "test-model" },
+      metadata: { model: "test-model", finishReason: "stop" },
       parts: childPartial.parts as StreamEndEvent["parts"],
     });
 
@@ -13255,6 +13267,7 @@ describe("TaskService", () => {
           state: "output-available",
           output: { success: true },
         },
+        { type: "text", text: "Hello from child" },
       ]
     );
     expect((await partialService.writePartial(childId, childPartial)).success).toBe(true);
@@ -13271,7 +13284,7 @@ describe("TaskService", () => {
       type: "stream-end",
       workspaceId: childId,
       messageId: "assistant-child-partial",
-      metadata: { model: "test-model" },
+      metadata: { model: "test-model", finishReason: "stop" },
       parts: childPartial.parts as StreamEndEvent["parts"],
     });
 
@@ -13407,6 +13420,7 @@ describe("TaskService", () => {
           state: "output-available",
           output: { success: true },
         },
+        { type: "text", text: "Hello from child" },
       ]
     );
     const writeChildPartial = await partialService.writePartial(childId, childPartial);
@@ -13424,7 +13438,7 @@ describe("TaskService", () => {
       type: "stream-end",
       workspaceId: childId,
       messageId: "assistant-child-partial",
-      metadata: { model: "test-model" },
+      metadata: { model: "test-model", finishReason: "stop" },
       parts: childPartial.parts as StreamEndEvent["parts"],
     });
 
@@ -13548,6 +13562,7 @@ describe("TaskService", () => {
           state: "output-available",
           output: { success: true },
         },
+        { type: "text", text: "Hello from child" },
       ]
     );
     const writeChildPartial = await partialService.writePartial(childId, childPartial);
@@ -13557,7 +13572,7 @@ describe("TaskService", () => {
       type: "stream-end",
       workspaceId: childId,
       messageId: "assistant-child-partial",
-      metadata: { model: "test-model" },
+      metadata: { model: "test-model", finishReason: "stop" },
       parts: childPartial.parts as StreamEndEvent["parts"],
     });
 
@@ -13662,7 +13677,7 @@ describe("TaskService", () => {
       type: "stream-end",
       workspaceId: childId,
       messageId: "assistant-child-output",
-      metadata: { model: "openai:gpt-4o-mini" },
+      metadata: { model: "openai:gpt-4o-mini", finishReason: "stop" },
       parts: [
         {
           type: "dynamic-tool",
@@ -13672,6 +13687,7 @@ describe("TaskService", () => {
           state: "output-available",
           output: { success: true },
         },
+        { type: "text", text: "Hello from child" },
       ],
     });
 
@@ -13805,7 +13821,7 @@ describe("TaskService", () => {
         type: "stream-end",
         workspaceId: input.workspaceId,
         messageId: input.messageId,
-        metadata: { model: childModel },
+        metadata: { model: childModel, finishReason: "stop" },
         parts: [
           {
             type: "dynamic-tool",
@@ -13815,6 +13831,7 @@ describe("TaskService", () => {
             state: "output-available",
             output: { success: true },
           },
+          { type: "text", text: input.reportMarkdown },
         ],
       });
     }
@@ -13926,7 +13943,7 @@ describe("TaskService", () => {
       type: "stream-end",
       workspaceId: childId,
       messageId: "assistant-child-output",
-      metadata: { model: "openai:gpt-4o-mini" },
+      metadata: { model: "openai:gpt-4o-mini", finishReason: "stop" },
       parts: [
         {
           type: "dynamic-tool",
@@ -14013,7 +14030,7 @@ describe("TaskService", () => {
       type: "stream-end",
       workspaceId: childId,
       messageId: "assistant-child-output",
-      metadata: { model: "openai:gpt-4o-mini" },
+      metadata: { model: "openai:gpt-4o-mini", finishReason: "stop" },
       parts: [
         {
           type: "dynamic-tool",
@@ -14082,7 +14099,7 @@ describe("TaskService", () => {
       type: "stream-end",
       workspaceId: childId,
       messageId: "assistant-child-output",
-      metadata: { model: "openai:gpt-4o-mini" },
+      metadata: { model: "openai:gpt-4o-mini", finishReason: "stop" },
       parts: [
         {
           type: "dynamic-tool",
@@ -14092,6 +14109,7 @@ describe("TaskService", () => {
           state: "output-available",
           output: { success: true },
         },
+        { type: "text", text: "Interrupted child report" },
       ],
     });
 
@@ -14160,7 +14178,7 @@ describe("TaskService", () => {
       type: "stream-end",
       workspaceId: childId,
       messageId: "assistant-child-output",
-      metadata: { model: "openai:gpt-4o-mini" },
+      metadata: { model: "openai:gpt-4o-mini", finishReason: "stop" },
       parts: [],
     });
 
@@ -14224,7 +14242,7 @@ describe("TaskService", () => {
       type: "stream-end",
       workspaceId: childId,
       messageId: "assistant-child-output",
-      metadata: { model: "openai:gpt-4o-mini" },
+      metadata: { model: "openai:gpt-4o-mini", finishReason: "stop" },
       parts: [],
     });
 
@@ -17281,7 +17299,7 @@ describe("TaskService", () => {
       type: "stream-end",
       workspaceId: childId,
       messageId: "assistant-child-report",
-      metadata: { model: "openai:gpt-5.5-pro" },
+      metadata: { model: "openai:gpt-5.5-pro", finishReason: "stop" },
       parts: [
         {
           type: "dynamic-tool",
@@ -17291,6 +17309,7 @@ describe("TaskService", () => {
           state: "output-available",
           output: { success: true },
         },
+        { type: "text", text: "All done" },
       ],
     });
 
