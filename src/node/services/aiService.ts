@@ -149,6 +149,7 @@ import {
   type SimulationContext,
 } from "./streamSimulation";
 import { applyToolPolicyAndExperiments, captureMcpToolTelemetry } from "./toolAssembly";
+import { applyToolGovernance } from "./toolGovernanceService";
 import { getErrorMessage } from "@/common/utils/errors";
 import { validateJsonSchemaSubsetSchema } from "@/common/utils/jsonSchemaSubset";
 import { filterSideQuestionMessages } from "@/common/utils/messages/sideQuestion";
@@ -2196,6 +2197,7 @@ export class AIService extends EventEmitter {
         experiments,
         emitNestedToolEvent: emitNestedPtcToolEvent,
       });
+      tools = await applyToolGovernance(this.config.rootDir, tools);
       recordStartupPhaseTiming(
         "applyToolPolicyAndExperimentsMs",
         applyToolPolicyAndExperimentsStartedAt
@@ -2624,6 +2626,7 @@ export class AIService extends EventEmitter {
                     experiments,
                     emitNestedToolEvent: emitNestedPtcToolEvent,
                   });
+                  nextTools = await applyToolGovernance(this.config.rootDir, nextTools);
                   // Tool search: keep the per-stream state consistent with the
                   // fallback model's re-assembled toolset. rebuildToolSearchState
                   // mutates the state object in place — StreamManager's request

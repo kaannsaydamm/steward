@@ -1,6 +1,18 @@
 import * as path from "path";
-import { lstat, mkdtemp, readFile, readdir, realpath, rm, stat } from "fs/promises";
+import {
+  copyFile,
+  lstat,
+  mkdir,
+  mkdtemp,
+  readFile,
+  readdir,
+  realpath,
+  rename,
+  rm,
+  stat,
+} from "fs/promises";
 import { tmpdir } from "os";
+import { randomUUID } from "crypto";
 
 import { SkillNameSchema } from "@/common/orpc/schemas";
 import { parseSkillMarkdown } from "@/node/services/agentSkills/parseSkillMarkdown";
@@ -38,6 +50,13 @@ interface CatalogSkillCandidate {
   resolvedPath: string;
   byteSize: number;
 }
+
+interface LocatedCatalogSkill extends FetchedSkillContent {
+  directory: string;
+}
+
+const MAX_SKILL_PACKAGE_FILES = 256;
+const MAX_SKILL_PACKAGE_BYTES = 10 * 1024 * 1024;
 export async function searchSkillsCatalog(
   query: string,
   limit: number
@@ -182,7 +201,7 @@ async function evaluateCatalogCandidate(
   skillId: string,
   cloneDir: string,
   branch: string
-): Promise<FetchedSkillContent | null> {
+): Promise<LocatedCatalogSkill | null> {
   if (shouldSkipOversizedCandidate(candidate.byteSize)) {
     return null;
   }
@@ -198,9 +217,151 @@ async function evaluateCatalogCandidate(
     }
 
     const relativePath = toCatalogRelativePath(cloneDir, candidate.resolvedPath);
-    return { content, path: relativePath, branch };
+    return { content, path: relativePath, branch, directory: path.dirname(candidate.resolvedPath) };
   } catch {
     return null;
+  }
+}
+
+async function locateCatalogSkill(
+  cloneDir: string,
+  branch: string,
+  skillId: string,
+  repository: string
+): Promise<LocatedCatalogSkill> {
+  assertValidSkillId(skillId);
+  const skillsRoot = path.resolve(cloneDir, "skills");
+  await assertSafeCatalogSkillsRoot(cloneDir, skillsRoot);
+
+  const directRelative = path.join(skillId, "SKILL.md");
+  try {
+    const directCandidate = await resolveReadableCatalogSkillPath(skillsRoot, directRelative);
+    const directResult = await evaluateCatalogCandidate(directCandidate, skillId, cloneDir, branch);
+    if (directResult != null) return directResult;
+  } catch (error) {
+    if (!isMissingPathError(error) && !isUnsafeCatalogFilesystemError(error)) throw error;
+  }
+
+  let entries: Array<{ name: string; isDirectory: () => boolean }> = [];
+  try {
+    await stat(skillsRoot);
+    entries = await readdir(skillsRoot, { withFileTypes: true });
+  } catch (error) {
+    if (!isMissingPathError(error)) throw error;
+  }
+
+  for (const entry of entries) {
+    if (!entry.isDirectory()) continue;
+    try {
+      const candidate = await resolveReadableCatalogSkillPath(
+        skillsRoot,
+        path.join(entry.name, "SKILL.md")
+      );
+      const result = await evaluateCatalogCandidate(candidate, skillId, cloneDir, branch);
+      if (result != null) return result;
+    } catch (error) {
+      if (!isMissingPathError(error) && !isUnsafeCatalogFilesystemError(error)) throw error;
+    }
+  }
+
+  throw new Error(`Could not find SKILL.md for skill '${skillId}' in ${repository}`);
+}
+
+async function cloneCatalogRepository(
+  owner: string,
+  repo: string
+): Promise<{
+  cloneDir: string;
+  branch: string;
+}> {
+  await assertGitAvailable();
+  const cloneDir = await mkdtemp(path.join(tmpdir(), "steward-skill-"));
+  try {
+    using cloneProc = execFileAsync("git", [
+      "clone",
+      "--depth",
+      "1",
+      "--single-branch",
+      `https://github.com/${owner}/${repo}.git`,
+      cloneDir,
+    ]);
+    await cloneProc.result;
+    return { cloneDir, branch: await detectBranch(cloneDir) };
+  } catch (error) {
+    await rm(cloneDir, { recursive: true, force: true });
+    const message = error instanceof Error ? error.message : String(error);
+    throw new Error(`Failed to clone ${owner}/${repo}: ${message}`);
+  }
+}
+
+async function copyValidatedSkillPackage(sourceDir: string, targetDir: string): Promise<void> {
+  let fileCount = 0;
+  let totalBytes = 0;
+
+  const copyDirectory = async (source: string, target: string): Promise<void> => {
+    await mkdir(target, { recursive: true });
+    for (const entry of await readdir(source, { withFileTypes: true })) {
+      const sourcePath = path.join(source, entry.name);
+      const targetPath = path.join(target, entry.name);
+      const metadata = await lstat(sourcePath);
+      if (metadata.isSymbolicLink()) {
+        throw new Error(`Skill package contains a symbolic link: ${entry.name}`);
+      }
+      if (metadata.isDirectory()) {
+        await copyDirectory(sourcePath, targetPath);
+        continue;
+      }
+      if (!metadata.isFile()) {
+        throw new Error(`Skill package contains an unsupported file type: ${entry.name}`);
+      }
+
+      fileCount += 1;
+      totalBytes += metadata.size;
+      if (
+        fileCount > MAX_SKILL_PACKAGE_FILES ||
+        metadata.size > MAX_FILE_SIZE ||
+        totalBytes > MAX_SKILL_PACKAGE_BYTES
+      ) {
+        throw new Error("Skill package exceeds Steward's safe installation limits");
+      }
+      await copyFile(sourcePath, targetPath);
+    }
+  };
+
+  await copyDirectory(sourceDir, targetDir);
+}
+
+export async function installCatalogSkill(input: {
+  owner: string;
+  repo: string;
+  skillId: string;
+  skillsRoot: string;
+}): Promise<void> {
+  parseSource(`${input.owner}/${input.repo}`);
+  assertValidSkillId(input.skillId);
+  const destination = path.join(input.skillsRoot, input.skillId);
+  try {
+    await lstat(destination);
+    throw new Error(`Skill '${input.skillId}' is already installed`);
+  } catch (error) {
+    if (!isMissingPathError(error)) throw error;
+  }
+
+  const { cloneDir, branch } = await cloneCatalogRepository(input.owner, input.repo);
+  const staging = path.join(input.skillsRoot, `.${input.skillId}-${randomUUID()}.tmp`);
+  try {
+    const located = await locateCatalogSkill(
+      cloneDir,
+      branch,
+      input.skillId,
+      `${input.owner}/${input.repo}`
+    );
+    await mkdir(input.skillsRoot, { recursive: true });
+    await copyValidatedSkillPackage(located.directory, staging);
+    await rename(staging, destination);
+  } finally {
+    await rm(staging, { recursive: true, force: true }).catch(() => undefined);
+    await rm(cloneDir, { recursive: true, force: true }).catch(() => undefined);
   }
 }
 export async function fetchSkillContent(
@@ -208,87 +369,17 @@ export async function fetchSkillContent(
   repo: string,
   skillId: string
 ): Promise<FetchedSkillContent> {
-  await assertGitAvailable();
-
-  const cloneDir = await mkdtemp(path.join(tmpdir(), "mux-skill-"));
+  const { cloneDir, branch } = await cloneCatalogRepository(owner, repo);
 
   try {
-    // Validate skillId and establish containment root
-    assertValidSkillId(skillId);
-    const skillsRoot = path.resolve(cloneDir, "skills");
-
-    const repoUrl = `https://github.com/${owner}/${repo}.git`;
-    using cloneProc = execFileAsync("git", [
-      "clone",
-      "--depth",
-      "1",
-      "--single-branch",
-      repoUrl,
-      cloneDir,
-    ]);
-    await cloneProc.result;
-
-    const branch = await detectBranch(cloneDir);
-    await assertSafeCatalogSkillsRoot(cloneDir, skillsRoot);
-
-    // Direct candidate: skills/<skillId>/SKILL.md
-    const directRelative = path.join(skillId, "SKILL.md");
-    try {
-      const directCandidate = await resolveReadableCatalogSkillPath(skillsRoot, directRelative);
-      const directResult = await evaluateCatalogCandidate(
-        directCandidate,
-        skillId,
-        cloneDir,
-        branch
-      );
-      if (directResult != null) {
-        return directResult;
-      }
-    } catch (error) {
-      if (!isMissingPathError(error) && !isUnsafeCatalogFilesystemError(error)) {
-        throw error;
-      }
-      // Missing or unsafe — fall through to scan
-    }
-
-    let entries: Array<{ name: string; isDirectory: () => boolean }> = [];
-    try {
-      await stat(skillsRoot);
-      entries = await readdir(skillsRoot, { withFileTypes: true });
-    } catch (error) {
-      if (!isMissingPathError(error)) {
-        throw error;
-      }
-    }
-
-    for (const entry of entries) {
-      if (!entry.isDirectory()) {
-        continue;
-      }
-
-      const candidateRelative = path.join(entry.name, "SKILL.md");
-      let candidate: CatalogSkillCandidate;
-      try {
-        candidate = await resolveReadableCatalogSkillPath(skillsRoot, candidateRelative);
-      } catch (error) {
-        if (isMissingPathError(error) || isUnsafeCatalogFilesystemError(error)) {
-          continue;
-        }
-        throw error;
-      }
-
-      const candidateResult = await evaluateCatalogCandidate(candidate, skillId, cloneDir, branch);
-      if (candidateResult != null) {
-        return candidateResult;
-      }
-    }
-
-    throw new Error(`Could not find SKILL.md for skill '${skillId}' in ${owner}/${repo}`);
+    const located = await locateCatalogSkill(cloneDir, branch, skillId, `${owner}/${repo}`);
+    return { content: located.content, path: located.path, branch: located.branch };
   } catch (error) {
     if (
       error instanceof Error &&
       (error.message.includes("Could not find SKILL.md") ||
         error.message.includes("git is required") ||
+        error.message.includes("Failed to clone") ||
         error.message.includes("Invalid skillId") ||
         error.message.includes("Unsafe catalog skill path") ||
         error.message.includes("Unsafe catalog skills root"))

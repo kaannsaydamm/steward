@@ -74,7 +74,10 @@ import { DesktopBridgeServer } from "@/node/services/desktop/DesktopBridgeServer
 import { DesktopSessionManager } from "@/node/services/desktop/DesktopSessionManager";
 import { DesktopTokenManager } from "@/node/services/desktop/DesktopTokenManager";
 import type { ORPCContext } from "@/node/orpc/context";
-import type { ExternalSecretResolver } from "@/common/types/secrets";
+import { secretsToRecord, type ExternalSecretResolver } from "@/common/types/secrets";
+import { ToolAuditService } from "@/node/services/toolGovernanceService";
+import { SchedulerService } from "@/node/services/schedulerService";
+import { TelegramBridgeService } from "@/node/services/telegramBridgeService";
 /**
  * ServiceContainer - Central dependency container for all backend services.
  *
@@ -127,6 +130,8 @@ export class ServiceContainer {
   public readonly browserControlService: BrowserControlService;
   public readonly browserSessionStateHub: BrowserSessionStateHub;
   public readonly analyticsService: AnalyticsService;
+  public readonly schedulerService: SchedulerService;
+  public readonly telegramBridgeService: TelegramBridgeService;
   public readonly experimentsService: ExperimentsService;
   public readonly policyService: PolicyService;
   public readonly coderService: CoderService;
@@ -140,9 +145,11 @@ export class ServiceContainer {
   public readonly idleDispatcher: IdleDispatcher;
   public readonly heartbeatService: HeartbeatService;
   public readonly agentStatusService: AgentStatusService;
+  public readonly toolAuditService: ToolAuditService;
 
   constructor(config: Config) {
     this.config = config;
+    this.toolAuditService = new ToolAuditService(config.rootDir);
 
     // Cross-cutting services: created first so they can be passed to core
     // services via constructor params (no setter injection needed).
@@ -219,6 +226,41 @@ export class ServiceContainer {
     });
     this.workspaceService = core.workspaceService;
     this.taskService = core.taskService;
+    this.schedulerService = new SchedulerService(config.rootDir, async (job) => {
+      const result = await this.taskService.create({
+        parentWorkspaceId: job.workspaceId,
+        kind: "agent",
+        agentId: job.agentId,
+        agentType: job.agentId,
+        prompt: job.prompt,
+        title: job.name,
+        attentionPolicy: "notify_on_terminal",
+      });
+      return result.success
+        ? { success: true, taskId: result.data.taskId }
+        : { success: false, error: result.error };
+    });
+    this.telegramBridgeService = new TelegramBridgeService(
+      config.rootDir,
+      async () => (await secretsToRecord(config.getGlobalSecrets(), opResolver)).TELEGRAM_BOT_TOKEN,
+      async ({ workspaceId, agentId, prompt }) => {
+        const created = await this.taskService.create({
+          parentWorkspaceId: workspaceId,
+          kind: "agent",
+          agentId,
+          agentType: agentId,
+          prompt,
+          title: "Telegram request",
+          attentionPolicy: "notify_on_terminal",
+        });
+        if (!created.success) throw new Error(created.error);
+        const report = await this.taskService.waitForAgentReport(created.data.taskId, {
+          timeoutMs: 30 * 60 * 1000,
+          requestingWorkspaceId: workspaceId,
+        });
+        return report.reportMarkdown;
+      }
+    );
     this.providerService = core.providerService;
     this.mcpConfigService = core.mcpConfigService;
     this.mcpServerManager = core.mcpServerManager;
@@ -387,11 +429,17 @@ export class ServiceContainer {
     this.aiService.on("tool-call-start", (data: ToolCallStartEvent) =>
       this.sessionTimingService.handleToolCallStart(data)
     );
+    this.aiService.on("tool-call-start", (data: ToolCallStartEvent) =>
+      this.toolAuditService.handleStart(data)
+    );
     this.aiService.on("tool-call-delta", (data: ToolCallDeltaEvent) =>
       this.sessionTimingService.handleToolCallDelta(data)
     );
     this.aiService.on("tool-call-end", (data: ToolCallEndEvent) =>
       this.sessionTimingService.handleToolCallEnd(data)
+    );
+    this.aiService.on("tool-call-end", (data: ToolCallEndEvent) =>
+      this.toolAuditService.handleEnd(data)
     );
     // Newly created sub-agent workspaces are ingested here before a full rebuild,
     // so keep workspaceName + parentWorkspaceId to avoid NULL analytics attribution.
@@ -525,6 +573,14 @@ export class ServiceContainer {
     await recordStep("workspaceService.initialize", () => this.workspaceService.initialize());
     await recordStep("taskService.initialize", () => this.taskService.initialize());
 
+    const schedulerStartedAt = Date.now();
+    this.schedulerService.start();
+    stepDurationsMs["schedulerService.start"] = Date.now() - schedulerStartedAt;
+
+    const telegramStartedAt = Date.now();
+    this.telegramBridgeService.start();
+    stepDurationsMs["telegramBridgeService.start"] = Date.now() - telegramStartedAt;
+
     const idleCompactionStartedAt = Date.now();
     // Start idle compaction checker
     this.idleCompactionService.start();
@@ -618,6 +674,9 @@ export class ServiceContainer {
       browserControlService: this.browserControlService,
       browserSessionStateHub: this.browserSessionStateHub,
       policyService: this.policyService,
+      toolAuditService: this.toolAuditService,
+      schedulerService: this.schedulerService,
+      telegramBridgeService: this.telegramBridgeService,
       coderService: this.coderService,
       serverAuthService: this.serverAuthService,
       sshPromptService: this.sshPromptService,
@@ -638,6 +697,8 @@ export class ServiceContainer {
     this.heartbeatService.stop();
     this.agentStatusService.stop();
     this.idleCompactionService.stop();
+    this.schedulerService.stop();
+    this.telegramBridgeService.stop();
     await this.browserBridgeServer.stop();
     this.browserSessionStateHub.dispose();
     this.browserBridgeTokenManager.dispose();

@@ -28,7 +28,9 @@ void mock.module("lottie-react", () => ({
 }));
 
 void mock.module("@/browser/contexts/API", () => ({
+  APIContext: React.createContext(null),
   APIProvider: (props: { children: React.ReactNode }) => props.children,
+  useOptionalAPI: () => null,
   useAPI: () => {
     if (apiStatus === "auth_required") {
       return {
@@ -113,7 +115,7 @@ describe("AppLoader", () => {
 
     const { getByTestId, queryByText } = render(<AppLoader />);
 
-    expect(queryByText("Loading Mux")).toBeNull();
+    expect(queryByText("Loading Steward")).toBeNull();
     expect(getByTestId("AuthTokenModalMock").textContent).toContain("Authentication required");
   });
 

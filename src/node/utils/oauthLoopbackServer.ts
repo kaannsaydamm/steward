@@ -144,7 +144,7 @@ export async function startLoopbackServer(options: LoopbackServerOptions): Promi
       renderOAuthCallbackHtml({
         title: r.success ? "Login complete" : "Login failed",
         message: r.success
-          ? "You can return to Mux. You may now close this tab."
+          ? "You can return to Steward. You may now close this tab."
           : (r.error ?? "Unknown error"),
         success: r.success,
       }));

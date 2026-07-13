@@ -295,14 +295,14 @@ function AppInner() {
       // Update window title with workspace title (or name for legacy workspaces)
       const metadata = workspaceMetadata.get(selectedWorkspace.workspaceId);
       const workspaceTitle = metadata?.title ?? metadata?.name ?? selectedWorkspace.workspaceId;
-      const title = `${workspaceTitle} - ${selectedWorkspace.projectName} - mux`;
+      const title = `${workspaceTitle} - ${selectedWorkspace.projectName} - Steward`;
       // Set document.title locally for browser mode, call backend for Electron
       document.title = title;
       void api?.window.setTitle({ title });
     } else {
       // Set document.title locally for browser mode, call backend for Electron
-      document.title = "mux";
-      void api?.window.setTitle({ title: "mux" });
+      document.title = "Steward";
+      void api?.window.setTitle({ title: "Steward" });
     }
   }, [selectedWorkspace, workspaceMetadata, api]);
 

@@ -129,11 +129,11 @@ export function MuxGatewaySessionExpiredDialog() {
 
   return (
     <SplashScreen
-      title="Mux Gateway session expired"
+      title="Hosted gateway session expired"
       onDismiss={dismiss}
       dismissOnPrimaryAction={false}
       primaryAction={{
-        label: isStartingLogin ? "Starting login..." : "Login to mux gateway",
+        label: isStartingLogin ? "Starting login..." : "Login to hosted gateway",
         disabled: isStartingLogin,
         onClick: () => {
           void startMuxGatewayLogin();

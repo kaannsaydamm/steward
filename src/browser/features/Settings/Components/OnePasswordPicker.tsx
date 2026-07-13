@@ -50,7 +50,7 @@ export function OnePasswordPicker(props: OnePasswordPickerProps) {
   useEffect(() => {
     if (!api) {
       setVaults([]);
-      setError("Mux API not connected.");
+      setError("Steward API not connected.");
       setLoading(false);
       return;
     }
@@ -112,7 +112,7 @@ export function OnePasswordPicker(props: OnePasswordPickerProps) {
     assert(vault.title.length > 0, "OnePasswordPicker: vault.title must be non-empty");
 
     if (!api) {
-      setError("Mux API not connected.");
+      setError("Steward API not connected.");
       return;
     }
 
@@ -148,7 +148,7 @@ export function OnePasswordPicker(props: OnePasswordPickerProps) {
     assert(item.title.length > 0, "OnePasswordPicker: item.title must be non-empty");
 
     if (!api) {
-      setError("Mux API not connected.");
+      setError("Steward API not connected.");
       return;
     }
 
@@ -191,7 +191,7 @@ export function OnePasswordPicker(props: OnePasswordPickerProps) {
     assert(field.title.length > 0, "OnePasswordPicker: field.title must be non-empty");
 
     if (!api) {
-      setError("Mux API not connected.");
+      setError("Steward API not connected.");
       return;
     }
 

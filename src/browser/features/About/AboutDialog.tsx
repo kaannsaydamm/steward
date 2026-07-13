@@ -3,9 +3,7 @@ import { Download, Loader2, RefreshCw } from "lucide-react";
 import { VERSION } from "@/version";
 import type { UpdateStatus } from "@/common/orpc/types";
 import type { UpdateChannel } from "@/common/types/project";
-import MuxLogoDark from "@/browser/assets/logos/mux-logo-dark.svg?react";
-import MuxLogoLight from "@/browser/assets/logos/mux-logo-light.svg?react";
-import { useTheme } from "@/browser/contexts/ThemeContext";
+import StewardLogo from "@/browser/assets/logos/white-steward.svg";
 import { useAPI } from "@/browser/contexts/API";
 import { useAboutDialog } from "@/browser/contexts/AboutDialogContext";
 import { Button } from "@/browser/components/Button/Button";
@@ -66,8 +64,6 @@ function parseVersionInfo(version: unknown): { gitDescribe: string; buildTime: s
 export function AboutDialog() {
   const { isOpen, close } = useAboutDialog();
   const { api } = useAPI();
-  const { theme } = useTheme();
-  const MuxLogo = theme === "dark" || theme.endsWith("-dark") ? MuxLogoDark : MuxLogoLight;
   const { gitDescribe, buildTime } = parseVersionInfo(VERSION satisfies unknown);
   const [updateStatus, setUpdateStatus] = useState<UpdateStatus>({ type: "idle" });
   const [channel, setChannel] = useState<UpdateChannel | null>(null);
@@ -199,7 +195,7 @@ export function AboutDialog() {
         <DialogTitle>About</DialogTitle>
 
         <div className="border-border-medium bg-modal-bg flex justify-center rounded-md border py-6">
-          <MuxLogo className="h-14 w-auto" aria-hidden="true" />
+          <img src={StewardLogo} className="h-20 w-auto" alt="Steward" />
         </div>
 
         <div className="space-y-1 text-sm">
@@ -313,7 +309,7 @@ export function AboutDialog() {
               )}
 
               {updateStatus.type === "up-to-date" && (
-                <div className="text-muted text-xs">Mux is up to date.</div>
+                <div className="text-muted text-xs">Steward is up to date.</div>
               )}
 
               {updateStatus.type === "idle" && (
@@ -374,7 +370,7 @@ export function AboutDialog() {
           )}
 
           <a
-            href="https://github.com/coder/mux/releases"
+            href="https://github.com/kaannsaydamm/steward/releases"
             target="_blank"
             rel="noopener noreferrer"
             className="titlebar-no-drag text-accent inline-block text-xs hover:underline"

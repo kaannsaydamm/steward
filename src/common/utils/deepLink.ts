@@ -7,10 +7,11 @@ function getNonEmptySearchParam(url: URL, key: string): string | undefined {
 }
 
 /**
- * Parse a mux:// deep link into a typed payload.
+ * Parse a Steward deep link into a typed payload.
  *
  * Currently supported route:
- * - mux://chat/new
+ * - steward://chat/new
+ * - mux://chat/new (legacy alias)
  */
 export function parseMuxDeepLink(raw: string): MuxDeepLinkPayload | null {
   let url: URL;
@@ -21,7 +22,7 @@ export function parseMuxDeepLink(raw: string): MuxDeepLinkPayload | null {
     return null;
   }
 
-  if (url.protocol !== "mux:") {
+  if (url.protocol !== "steward:" && url.protocol !== "mux:") {
     return null;
   }
 
@@ -53,7 +54,7 @@ export function parseMuxDeepLink(raw: string): MuxDeepLinkPayload | null {
 export function normalizeProjectPathForComparison(projectPath: string, platform?: string): string {
   let normalized = projectPath.trim();
 
-  // Be forgiving: mux:// links may include trailing path separators.
+  // Be forgiving: deep links may include trailing path separators.
   normalized = normalized.replace(/[\\/]+$/, "");
 
   if (platform === "win32") {

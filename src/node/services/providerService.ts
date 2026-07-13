@@ -35,8 +35,10 @@ import { log } from "@/node/services/log";
 import {
   checkProviderConfigured,
   isProviderAutoRouteEligible,
+  resolveCustomProviderCredentials,
   resolveProviderCredentials,
 } from "@/node/utils/providerRequirements";
+import type { ExternalSecretResolver } from "@/common/types/secrets";
 import { parseCodexOauthAuth } from "@/node/utils/codexOauthAuth";
 import type { PolicyService } from "@/node/services/policyService";
 import { getErrorMessage } from "@/common/utils/errors";
@@ -58,6 +60,85 @@ function filterProviderModelsByPolicy(
   }
 
   return models.filter((entry) => allowedModels.includes(getProviderModelEntryId(entry)));
+}
+
+const MODEL_CATALOG_MAX_BYTES = 10 * 1024 * 1024;
+
+function asRecord(value: unknown): Record<string, unknown> | null {
+  return typeof value === "object" && value !== null && !Array.isArray(value)
+    ? (value as Record<string, unknown>)
+    : null;
+}
+
+function readPositiveTokenLimit(value: unknown): number | null {
+  return typeof value === "number" && Number.isSafeInteger(value) && value > 0 ? value : null;
+}
+
+function readProviderContextLimit(model: Record<string, unknown>): number | null {
+  for (const value of [
+    model.context_window,
+    model.context_length,
+    model.context_window_tokens,
+    model.max_context_length,
+    model.max_model_len,
+    asRecord(model.limit)?.context,
+    asRecord(model.limits)?.context_window,
+    asRecord(model.architecture)?.context_length,
+  ]) {
+    const limit = readPositiveTokenLimit(value);
+    if (limit !== null) return limit;
+  }
+  return null;
+}
+
+async function readBoundedJson(response: Response, source: string): Promise<unknown> {
+  const declaredLength = Number(response.headers.get("content-length") ?? "0");
+  if (declaredLength > MODEL_CATALOG_MAX_BYTES) {
+    throw new Error(`${source} returned an unexpectedly large model catalog.`);
+  }
+  const text = await response.text();
+  if (text.length > MODEL_CATALOG_MAX_BYTES) {
+    throw new Error(`${source} returned an unexpectedly large model catalog.`);
+  }
+  return JSON.parse(text) as unknown;
+}
+
+async function fetchRegistryContextLimits(modelIds: string[]): Promise<Map<string, number>> {
+  try {
+    const response = await fetch("https://models.dev/api.json", {
+      headers: { accept: "application/json" },
+      signal: AbortSignal.timeout(10_000),
+    });
+    if (!response.ok) return new Map();
+    const registry = asRecord(await readBoundedJson(response, "models.dev"));
+    if (!registry) return new Map();
+
+    const requested = new Set(modelIds);
+    const candidates = new Map<string, Set<number>>();
+    for (const provider of Object.values(registry)) {
+      const models = asRecord(asRecord(provider)?.models);
+      if (!models) continue;
+      for (const [modelId, modelValue] of Object.entries(models)) {
+        if (!requested.has(modelId)) continue;
+        const limit = readPositiveTokenLimit(asRecord(asRecord(modelValue)?.limit)?.context);
+        if (limit === null) continue;
+        const limits = candidates.get(modelId) ?? new Set<number>();
+        limits.add(limit);
+        candidates.set(modelId, limits);
+      }
+    }
+
+    return new Map(
+      [...candidates.entries()]
+        .filter(([, limits]) => limits.size === 1)
+        .map(([modelId, limits]) => [modelId, [...limits][0]])
+    );
+  } catch (cause) {
+    log.warn("Could not enrich provider models with models.dev metadata", {
+      error: getErrorMessage(cause),
+    });
+    return new Map();
+  }
 }
 
 function buildCustomProviderConfigInfo(
@@ -145,7 +226,8 @@ export class ProviderService {
 
   constructor(
     private readonly config: Config,
-    policyService?: PolicyService
+    policyService?: PolicyService,
+    private readonly opResolver?: ExternalSecretResolver
   ) {
     this.policyService = policyService ?? null;
     // The provider config subscription may have many concurrent listeners (e.g. multiple windows).
@@ -171,6 +253,60 @@ export class ProviderService {
       }
       this.notifyConfigChanged();
     });
+  }
+
+  public async fetchCustomProviderModels(providerInput: string): Promise<ProviderModelEntry[]> {
+    const provider = providerInput.trim();
+    const providersConfig = getProviderConfigRecord(this.config.loadProvidersConfig() ?? {});
+    const providerConfig = providersConfig[provider];
+    if (!isCustomOpenAICompatibleProviderConfig(providerConfig)) {
+      throw new Error(`Provider ${provider} is not a custom OpenAI-compatible provider.`);
+    }
+    const credentials = await resolveCustomProviderCredentials(
+      provider,
+      providerConfig,
+      this.opResolver
+    );
+    if (!credentials.ok) {
+      throw new Error(`Could not resolve credentials for ${provider}: ${credentials.error.code}`);
+    }
+    const url = `${credentials.baseURL.replace(/\/+$/u, "")}/models`;
+    const response = await fetch(url, {
+      headers: credentials.apiKey ? { authorization: `Bearer ${credentials.apiKey}` } : {},
+      signal: AbortSignal.timeout(15_000),
+    });
+    if (!response.ok) {
+      throw new Error(`${provider} model discovery failed with HTTP ${response.status}.`);
+    }
+    const payload = asRecord(await readBoundedJson(response, provider));
+    const rows = Array.isArray(payload?.data) ? payload.data : [];
+    const discovered = new Map<string, number | null>();
+    for (const row of rows) {
+      const model = asRecord(row);
+      if (!model) continue;
+      const id = model.id;
+      if (typeof id !== "string" || id.trim().length === 0) continue;
+      const normalizedId = id.trim();
+      const contextLimit = readProviderContextLimit(model);
+      const existing = discovered.get(normalizedId);
+      discovered.set(normalizedId, existing ?? contextLimit);
+    }
+    if (discovered.size === 0) {
+      throw new Error(`${provider} returned no model IDs from ${url}.`);
+    }
+    const missingIds = [...discovered.entries()]
+      .filter(([, contextLimit]) => contextLimit === null)
+      .map(([id]) => id);
+    const registryLimits =
+      missingIds.length > 0
+        ? await fetchRegistryContextLimits(missingIds)
+        : new Map<string, number>();
+    return [...discovered.entries()]
+      .sort(([a], [b]) => a.localeCompare(b))
+      .map(([id, providerLimit]): ProviderModelEntry => {
+        const contextWindowTokens = providerLimit ?? registryLimits.get(id);
+        return contextWindowTokens ? { id, contextWindowTokens } : id;
+      });
   }
 
   /**

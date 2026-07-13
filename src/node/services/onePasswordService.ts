@@ -5,7 +5,7 @@ import { log } from "@/node/services/log";
 
 const CACHE_TTL_MS = 5 * 60 * 1000; // 5 minutes
 const RESOLVE_TIMEOUT_MS = 10_000; // 10 seconds
-const INTEGRATION_NAME = "Mux Desktop";
+const INTEGRATION_NAME = "Steward Desktop";
 const INTEGRATION_VERSION = "1.0.0";
 
 function withTimeout<T>(promise: Promise<T>, ms: number, message: string): Promise<T> {

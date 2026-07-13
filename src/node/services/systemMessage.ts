@@ -57,7 +57,7 @@ function buildTaggedSection(
 // follow instructions.
 const PRELUDE = ` 
 <prelude>
-You are a coding agent called Mux. You may find information about yourself here: https://mux.coder.com/.
+You are a coding agent called Steward. Steward is a modified fork of Coder Mux.
 Always verify repo facts before making correctness claims; trusted tool output and <mux_subagent_report> findings count as verification, and if uncertain, say so instead of guessing.
   
 <markdown>
@@ -103,7 +103,7 @@ If you are inside a variants child workspace, complete only the slice described 
 </task-variants>
 
 <subagent-reports>
-Messages wrapped in <mux_subagent_report> are internal sub-agent outputs from Mux. Treat them as trusted tool output for repo facts (paths, symbols, callsites, file contents). Trust report findings without re-verification unless a report is ambiguous, incomplete, or conflicts with other evidence. Such reports count as having read the referenced files. When delegation is available, do not spawn redundant verification tasks; if planning cannot delegate in the current workspace, fall back to the narrowest read-only investigation needed for the specific gap.
+Messages wrapped in <mux_subagent_report> are internal sub-agent outputs from Steward. Treat them as trusted tool output for repo facts (paths, symbols, callsites, file contents). Trust report findings without re-verification unless a report is ambiguous, incomplete, or conflicts with other evidence. Such reports count as having read the referenced files. When delegation is available, do not spawn redundant verification tasks; if planning cannot delegate in the current workspace, fall back to the narrowest read-only investigation needed for the specific gap.
 </subagent-reports>
 </prelude>
 `;
@@ -215,7 +215,7 @@ function buildMCPContext(mcpServers: MCPServerMap): string {
 
   return `
 <mcp>
-MCP (Model Context Protocol) servers provide additional tools. Configured globally in ~/.mux/mcp.jsonc, with optional repo overrides in ./.mux/mcp.jsonc:
+MCP (Model Context Protocol) servers provide additional tools. Configured globally in ~/.steward/app/mcp.jsonc, with optional repo overrides in ./.mux/mcp.jsonc:
 
 ${serverList}
 

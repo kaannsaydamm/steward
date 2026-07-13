@@ -81,7 +81,7 @@ export function createCoreServices(opts: CoreServicesOptions): CoreServices {
 
   const historyService = new HistoryService(config);
   const initStateManager = new InitStateManager(config);
-  const providerService = new ProviderService(config, opts.policyService);
+  const providerService = new ProviderService(config, opts.policyService, opts.opResolver);
   const backgroundProcessManager = new BackgroundProcessManager(
     path.join(os.tmpdir(), "mux-bashes")
   );

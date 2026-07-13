@@ -99,8 +99,8 @@ describe("UpdaterService", () => {
       expect(service.getChannel()).toBe("stable");
       expect(mockAutoUpdater.setFeedURL).toHaveBeenCalledWith({
         provider: "github",
-        owner: "coder",
-        repo: "mux",
+        owner: "kaannsaydamm",
+        repo: "steward",
         releaseType: "release",
       });
     });
@@ -113,8 +113,8 @@ describe("UpdaterService", () => {
       expect(nightlyService.getChannel()).toBe("nightly");
       expect(mockAutoUpdater.setFeedURL).toHaveBeenCalledWith({
         provider: "github",
-        owner: "coder",
-        repo: "mux",
+        owner: "kaannsaydamm",
+        repo: "steward",
         releaseType: "prerelease",
       });
       expect(mockAutoUpdater.allowPrerelease).toBe(true);
@@ -133,8 +133,8 @@ describe("UpdaterService", () => {
       expect(channelService.getChannel()).toBe("nightly");
       expect(mockAutoUpdater.setFeedURL).toHaveBeenLastCalledWith({
         provider: "github",
-        owner: "coder",
-        repo: "mux",
+        owner: "kaannsaydamm",
+        repo: "steward",
         releaseType: "prerelease",
       });
       expect(mockAutoUpdater.channel).toBe("nightly");

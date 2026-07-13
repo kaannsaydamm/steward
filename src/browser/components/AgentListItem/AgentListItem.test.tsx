@@ -518,7 +518,7 @@ describe("AgentListItem", () => {
     const rowView = within(row);
 
     expect(row.querySelector(".bg-border-pending.border-surface-sky")).toBeTruthy();
-    expect(rowView.getByText("Mux has a few questions")).toBeTruthy();
+    expect(rowView.getByText("Steward has a few questions")).toBeTruthy();
     expect(rowView.queryByText("Workflow running · 1 sub-agent active")).toBeNull();
   });
 
@@ -749,7 +749,7 @@ describe("AgentListItem", () => {
       name: "question rows",
       sidebarState: createWorkspaceSidebarState({ awaitingUserQuestion: true }),
       expectedSelector: ".bg-border-pending.border-surface-sky",
-      expectedText: "Mux has a few questions",
+      expectedText: "Steward has a few questions",
     },
     {
       name: "error rows",

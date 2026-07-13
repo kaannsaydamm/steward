@@ -245,7 +245,7 @@ dist/preload.js: src/desktop/preload.ts $(TS_SOURCES)
 	@NODE_ENV=production bun build src/desktop/preload.ts \
 		--format=cjs \
 		--target=node \
-		--external=electron \
+		--external electron \
 		--sourcemap=inline \
 		--outfile=dist/preload.js
 
@@ -257,6 +257,7 @@ build-static: ## Copy static assets to dist
 	@echo "Copying static assets..."
 	@mkdir -p dist
 	@cp static/splash.html dist/splash.html
+	@cp src/browser/assets/logos/white-steward.svg dist/white-steward.svg
 	@cp -r public/* dist/
 	@# Copy TypeScript lib files for PTC runtime type validation (es5 through es2023).
 	@# electron-builder ignores .d.ts files by default and this cannot be overridden:

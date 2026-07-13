@@ -16,6 +16,12 @@ import {
   ShieldCheck,
   Server,
   Lock,
+  Sparkles,
+  Gavel,
+  Workflow,
+  DatabaseBackup,
+  CalendarClock,
+  MessageCircle,
 } from "lucide-react";
 import { useSettings } from "@/browser/contexts/SettingsContext";
 import { useOnboardingPause } from "@/browser/features/SplashScreens/SplashScreenProvider";
@@ -37,6 +43,12 @@ import { ExperimentsSection } from "./Sections/ExperimentsSection";
 import { ServerAccessSection } from "./Sections/ServerAccessSection";
 import { KeybindsSection } from "./Sections/KeybindsSection";
 import { SecuritySection } from "./Sections/SecuritySection";
+import { SkillsSection } from "./Sections/SkillsSection";
+import { ToolGovernanceSection } from "./Sections/ToolGovernanceSection";
+import { VisualWorkflowsSection } from "./Sections/VisualWorkflowsSection";
+import { DataSection } from "./Sections/DataSection";
+import { SchedulesSection } from "./Sections/SchedulesSection";
+import { TelegramSection } from "./Sections/TelegramSection";
 import type { SettingsSection } from "./types";
 
 const LEGACY_EXPERIMENT_SETTINGS_SECTION_IDS = new Set(["goals", "heartbeat"]);
@@ -73,6 +85,18 @@ const BASE_SECTIONS: SettingsSection[] = [
     component: MCPSettingsSection,
   },
   {
+    id: "skills",
+    label: "Skills",
+    icon: <Sparkles className="h-4 w-4" />,
+    component: SkillsSection,
+  },
+  {
+    id: "workflows",
+    label: "Workflows",
+    icon: <Workflow className="h-4 w-4" />,
+    component: VisualWorkflowsSection,
+  },
+  {
     id: "secrets",
     label: "Secrets",
     icon: <Lock className="h-4 w-4" />,
@@ -83,6 +107,30 @@ const BASE_SECTIONS: SettingsSection[] = [
     label: "Security",
     icon: <ShieldCheck className="h-4 w-4" />,
     component: SecuritySection,
+  },
+  {
+    id: "tool-governance",
+    label: "Tool Governance",
+    icon: <Gavel className="h-4 w-4" />,
+    component: ToolGovernanceSection,
+  },
+  {
+    id: "data",
+    label: "Data",
+    icon: <DatabaseBackup className="h-4 w-4" />,
+    component: DataSection,
+  },
+  {
+    id: "schedules",
+    label: "Schedules",
+    icon: <CalendarClock className="h-4 w-4" />,
+    component: SchedulesSection,
+  },
+  {
+    id: "telegram",
+    label: "Telegram",
+    icon: <MessageCircle className="h-4 w-4" />,
+    component: TelegramSection,
   },
   {
     id: "server-access",
@@ -314,7 +362,11 @@ export function SettingsPage(props: SettingsPageProps) {
             {/* Keep settings content width bounded so long forms remain readable on wide screens.
                 min-h-full + flex-col lets full-height sections (Settings → Memory editor) grow to
                 the bottom via flex-1 while content-sized sections keep their natural height. */}
-            <div className="flex min-h-full w-full max-w-4xl flex-col">
+            <div
+              className={`flex min-h-full w-full flex-col ${
+                currentSection.id === "workflows" ? "max-w-none" : "max-w-4xl"
+              }`}
+            >
               {onboardingPause.paused && (
                 <div className="bg-accent/10 border-accent/30 text-foreground mb-3 flex items-center justify-between rounded-md border px-3 py-2 text-sm">
                   <span>Setup is paused while you configure providers.</span>

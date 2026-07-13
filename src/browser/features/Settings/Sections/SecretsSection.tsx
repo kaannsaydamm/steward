@@ -643,8 +643,8 @@ export const SecretsSection: React.FC = () => {
       <div className="flex items-start justify-between gap-4">
         <div>
           <p className="text-muted text-xs">
-            Secrets are stored in <code className="text-accent">~/.mux/secrets.json</code> (kept out
-            of source control).
+            Secrets are stored in <code className="text-accent">~/.steward/app/secrets.json</code>{" "}
+            (kept out of source control).
           </p>
           <p className="text-muted mt-1 text-xs">
             Scope: <span className="text-foreground">{scopeLabel}</span>

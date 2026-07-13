@@ -1,6 +1,6 @@
 {
-  "name": "mux - coder multiplexer",
-  "short_name": "mux",
+  "name": "Steward - Agent Workspace",
+  "short_name": "Steward",
   "description": "Parallel agentic development with Electron + React",
   "start_url": ".",
   "display": "standalone",

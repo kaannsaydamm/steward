@@ -3,7 +3,7 @@
 process.umask(0o077);
 
 /**
- * Mux CLI entry point.
+ * Steward CLI entry point.
  *
  * LAZY LOADING REQUIREMENT:
  * We manually route subcommands before calling program.parse() to avoid
@@ -20,7 +20,7 @@ process.umask(0o077);
  *
  * ARGV OFFSET:
  * In development (`electron .`), argv = [electron, ".", ...args] so first arg is at index 2.
- * In packaged apps (`./mux.AppImage`), argv = [app, ...args] so first arg is at index 1.
+ * In packaged apps (`./Steward.AppImage`), argv = [app, ...args] so first arg is at index 1.
  * process.defaultApp is true in dev mode and undefined in packaged apps.
  */
 import { Command } from "commander";
@@ -47,7 +47,7 @@ function launchDesktop(): void {
 
 if (subcommand === "run") {
   if (!isCommandAvailable("run", env)) {
-    console.error("The 'run' command is only available via the CLI (bun mux run).");
+    console.error("The 'run' command is only available via the CLI (bun steward run).");
     console.error("It is not bundled in Electron.");
     process.exit(1);
   }
@@ -56,7 +56,7 @@ if (subcommand === "run") {
   require("./run");
 } else if (subcommand === "workflow" || subcommand === "wf") {
   if (!isCommandAvailable("workflow", env)) {
-    console.error("The 'workflow' command is only available via the CLI (bun mux workflow).");
+    console.error("The 'workflow' command is only available via the CLI (bun steward workflow).");
     console.error("It is not bundled in Electron.");
     process.exit(1);
   }
@@ -72,7 +72,7 @@ if (subcommand === "run") {
     });
 } else if (subcommand === "trust") {
   if (!isCommandAvailable("trust", env)) {
-    console.error("The 'trust' command is only available via the CLI (bun mux trust).");
+    console.error("The 'trust' command is only available via the CLI (bun steward trust).");
     console.error("It is not bundled in Electron.");
     process.exit(1);
   }
@@ -105,11 +105,11 @@ if (subcommand === "run") {
   subcommand === "desktop" ||
   (env.isElectron && (subcommand === undefined || isElectronLaunchArg(subcommand, env)))
 ) {
-  // Explicit `mux desktop`, or Electron runtime with no subcommand / Electron launch args
+  // Explicit `steward desktop`, or Electron runtime with no subcommand / Electron launch args
   if (!isCommandAvailable("desktop", env)) {
     console.error("The 'desktop' command requires Electron to be installed.");
     console.error("When installed via npm, use the packaged desktop app instead.");
-    console.error("Download from: https://github.com/coder/mux/releases");
+    console.error("Download from: https://github.com/kaannsaydamm/steward/releases");
     process.exit(1);
   }
   launchDesktop();
@@ -129,8 +129,8 @@ if (subcommand === "run") {
   // Global flags are defined in CLI_GLOBAL_FLAGS (argv.ts) for routing logic.
   // Commander auto-adds --help/-h. We define --version/-v below.
   program
-    .name("mux")
-    .description("Mux - AI agent orchestration")
+    .name("steward")
+    .description("Steward - parallel AI agent orchestration")
     .version(`${gitDescribe} (${gitCommit})`, "-v, --version");
 
   // Sanity check: ensure version flags match CLI_GLOBAL_FLAGS
@@ -159,7 +159,7 @@ if (subcommand === "run") {
   }
   program.command("server").description("Start the HTTP/WebSocket ORPC server");
   program.command("acp").description("ACP stdio interface for editor integration");
-  program.command("api").description("Interact with the mux API via a running server");
+  program.command("api").description("Interact with the Steward API via a running server");
   if (isCommandAvailable("desktop", env)) {
     program
       .command("desktop")

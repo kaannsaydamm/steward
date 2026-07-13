@@ -6,6 +6,7 @@ import { describe, expect, mock, test } from "bun:test";
 import { Ok } from "@/common/types/result";
 import type { TaskApplyGitPatchConfiguration } from "@/node/services/tools/task_apply_git_patch";
 import { DisposableTempDir } from "@/node/services/tempDir";
+import { LocalRuntime } from "@/node/runtime/LocalRuntime";
 import type { TaskCreateResult } from "@/node/services/taskService";
 import {
   DEFAULT_WORKFLOW_AGENT_ID,
@@ -13,6 +14,42 @@ import {
 } from "./WorkflowTaskServiceAdapter";
 
 describe("WorkflowTaskServiceAdapter", () => {
+  test("runs deterministic workflow commands without spawning an agent", async () => {
+    using tmp = new DisposableTempDir("workflow-command");
+    const runtime = new LocalRuntime(tmp.path);
+    const create = mock(async () =>
+      Ok({ taskId: "task_1", kind: "agent" as const, status: "running" as const })
+    );
+    const adapter = new WorkflowTaskServiceAdapter({
+      taskService: {
+        create,
+        waitForAgentReport: mock(async () => ({ reportMarkdown: "unused" })),
+      },
+      parentWorkspaceId: "parent_1",
+      workflowRunId: "wfr_123",
+      defaultAgentId: DEFAULT_WORKFLOW_AGENT_ID,
+      patchToolConfig: {
+        workspaceId: "parent_1",
+        cwd: tmp.path,
+        runtime,
+        runtimeTempDir: path.join(tmp.path, ".steward", "tmp"),
+        workspaceSessionDir: path.join(tmp.path, ".steward", "session"),
+        trusted: true,
+      },
+    });
+
+    const result = await adapter.runCommand({
+      id: "command-step",
+      shell: "default",
+      command: "printf steward-command",
+      cwd: ".",
+      options: '{"timeoutSeconds": 10}',
+    });
+
+    expect(result).toMatchObject({ success: true, exitCode: 0, stdout: "steward-command" });
+    expect(create).not.toHaveBeenCalled();
+  });
+
   test("spawns a workflow child task with workflow metadata and returns its report", async () => {
     const outputSchema = { type: "object", properties: { claims: { type: "array" } } };
     const create = mock(async (_args: unknown) =>

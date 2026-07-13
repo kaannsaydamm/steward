@@ -4,6 +4,7 @@ import * as path from "node:path";
 import type { SubagentGitPatchArtifact } from "@/common/utils/tools/toolDefinitions";
 import type { ParsedThinkingInput } from "@/common/types/thinking";
 import assert from "@/common/utils/assert";
+import { execBuffered } from "@/node/utils/runtime/helpers";
 import { AsyncMutex } from "@/node/utils/concurrency/asyncMutex";
 import type { TaskCreateResult } from "@/node/services/taskService";
 import type {
@@ -11,6 +12,8 @@ import type {
   WorkflowAgentSpec,
   WorkflowAgentWaitOptions,
   WorkflowApplyPatchSpec,
+  WorkflowCommandResult,
+  WorkflowCommandSpec,
   WorkflowTaskAdapter,
 } from "./WorkflowRunner";
 import { isPathInsideDir } from "@/node/utils/pathUtils";
@@ -132,6 +135,57 @@ export interface WorkflowTaskServiceAdapterOptions {
   getProjectTrusted?: () => boolean | Promise<boolean>;
 }
 
+function parseWorkflowCommandOptions(raw: string | undefined): {
+  timeoutSeconds: number;
+  env?: Record<string, string>;
+} {
+  const value = raw?.trim();
+  if (!value) return { timeoutSeconds: 3600 };
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(value);
+  } catch {
+    throw new Error('Workflow command options must be JSON, for example {"timeoutSeconds": 600}');
+  }
+  assert(
+    parsed != null && typeof parsed === "object" && !Array.isArray(parsed),
+    "Workflow command options must be a JSON object"
+  );
+  const options = parsed as Record<string, unknown>;
+  const timeoutSeconds = options.timeoutSeconds ?? 3600;
+  assert(
+    typeof timeoutSeconds === "number" &&
+      Number.isInteger(timeoutSeconds) &&
+      timeoutSeconds >= 1 &&
+      timeoutSeconds <= 86_400,
+    "Workflow command timeoutSeconds must be an integer between 1 and 86400"
+  );
+  if (options.env == null) return { timeoutSeconds };
+  assert(
+    typeof options.env === "object" && !Array.isArray(options.env),
+    "Workflow command env must be a JSON object"
+  );
+  const env = Object.fromEntries(
+    Object.entries(options.env as Record<string, unknown>).map(([key, item]) => {
+      assert(
+        /^[A-Za-z_][A-Za-z0-9_]*$/u.test(key),
+        `Invalid workflow environment variable: ${key}`
+      );
+      assert(typeof item === "string", `Workflow environment variable ${key} must be a string`);
+      return [key, item];
+    })
+  );
+  return { timeoutSeconds, env };
+}
+
+function buildPowerShellCommand(command: string): string {
+  const encoded = Buffer.from(
+    `$ProgressPreference = 'SilentlyContinue'; ${command}`,
+    "utf16le"
+  ).toString("base64");
+  return `if command -v powershell.exe >/dev/null 2>&1; then powershell.exe -NoProfile -NonInteractive -EncodedCommand ${encoded}; else pwsh -NoProfile -NonInteractive -EncodedCommand ${encoded}; fi`;
+}
+
 export class WorkflowTaskServiceAdapter implements WorkflowTaskAdapter {
   private readonly taskService: WorkflowTaskServiceLike;
   private readonly parentWorkspaceId: string;
@@ -170,6 +224,37 @@ export class WorkflowTaskServiceAdapter implements WorkflowTaskAdapter {
     this.experiments = options.experiments;
     this.modelString = options.modelString;
     this.thinkingLevel = options.thinkingLevel;
+  }
+
+  async runCommand(
+    spec: WorkflowCommandSpec,
+    options?: { abortSignal?: AbortSignal }
+  ): Promise<WorkflowCommandResult> {
+    const toolConfig = this.patchToolConfig;
+    assert(toolConfig != null, "Workflow command execution requires workspace runtime config");
+    const cwd = toolConfig.runtime.normalizePath(spec.cwd?.trim() || ".", toolConfig.cwd);
+    assert(
+      isPathInsideDir(toolConfig.cwd, cwd),
+      `Workflow command working directory must stay inside the workspace: ${spec.cwd ?? "."}`
+    );
+
+    const parsedOptions = parseWorkflowCommandOptions(spec.options);
+    const command =
+      spec.shell === "powershell" ? buildPowerShellCommand(spec.command) : spec.command.trim();
+    const result = await execBuffered(toolConfig.runtime, command, {
+      cwd,
+      ...(spec.stdin !== undefined ? { stdin: spec.stdin } : {}),
+      ...(parsedOptions.env != null ? { env: parsedOptions.env } : {}),
+      timeout: parsedOptions.timeoutSeconds,
+      abortSignal: options?.abortSignal,
+    });
+    return {
+      success: result.exitCode === 0,
+      exitCode: result.exitCode,
+      stdout: result.stdout,
+      stderr: result.stderr,
+      durationMs: result.duration,
+    };
   }
 
   async applyPatch(

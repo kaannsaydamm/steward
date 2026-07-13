@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useRef, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { usePolicy } from "@/browser/contexts/PolicyContext";
 import { useAPI } from "@/browser/contexts/API";
 import {
@@ -14,6 +14,9 @@ import {
   LogIn,
   ChevronDown,
   ChevronRight,
+  ExternalLink,
+  Store,
+  SlidersHorizontal,
 } from "lucide-react";
 import { Button } from "@/browser/components/Button/Button";
 import {
@@ -172,6 +175,28 @@ const ToolAllowlistSection: React.FC<{
   );
 };
 
+interface MCPRegistryEntry {
+  name: string;
+  title: string;
+  description: string;
+  source: "official" | "smithery" | "glama";
+  transport?: "stdio" | "http";
+  value?: string;
+  repositoryUrl?: string;
+  catalogUrl: string;
+  installable: boolean;
+  requiresConfiguration: boolean;
+}
+
+type MCPRegistrySourceFilter = "all" | MCPRegistryEntry["source"];
+type MCPRegistryTransportFilter = "all" | "stdio" | "http" | "catalog";
+type MCPRegistrySort = "relevance" | "name" | "ready";
+
+interface MCPRegistryCatalogStatus {
+  source: MCPRegistryEntry["source"];
+  available: boolean;
+}
+
 type MCPOAuthLoginStatus = "idle" | "starting" | "waiting" | "success" | "error";
 
 interface MCPOAuthAuthStatus {
@@ -305,7 +330,7 @@ function useMCPOAuthLogin(input: {
 
       if (!api) {
         setLoginStatus("error");
-        setLoginError("Mux API not connected.");
+        setLoginError("Steward API not connected.");
         return;
       }
 
@@ -440,7 +465,7 @@ const MCPOAuthRequiredCallout: React.FC<{
   const disabledTitle =
     disabledReason ??
     (!api
-      ? "Mux API not connected"
+      ? "Steward API not connected"
       : !mcpOauthApi
         ? "OAuth is not available in this environment."
         : !loginFlowMode
@@ -789,10 +814,78 @@ export const MCPSettingsSection: React.FC = () => {
   const [addingServer, setAddingServer] = useState(false);
   const [testingNew, setTestingNew] = useState(false);
   const [newTestResult, setNewTestResult] = useState<CachedMCPTestResult | null>(null);
+  const [registryQuery, setRegistryQuery] = useState("");
+  const [registryResults, setRegistryResults] = useState<MCPRegistryEntry[]>([]);
+  const [registryCatalogs, setRegistryCatalogs] = useState<MCPRegistryCatalogStatus[]>([]);
+  const [registrySearching, setRegistrySearching] = useState(false);
+  const [registryHasSearched, setRegistryHasSearched] = useState(false);
+  const [registrySourceFilter, setRegistrySourceFilter] = useState<MCPRegistrySourceFilter>("all");
+  const [registryTransportFilter, setRegistryTransportFilter] =
+    useState<MCPRegistryTransportFilter>("all");
+  const [registrySort, setRegistrySort] = useState<MCPRegistrySort>("relevance");
+  const addServerDetailsRef = useRef<HTMLDetailsElement>(null);
+
+  const visibleRegistryResults = useMemo(() => {
+    const unique = Array.from(
+      new Map(registryResults.map((entry) => [`${entry.source}:${entry.name}`, entry])).values()
+    ).filter((entry) => {
+      if (registrySourceFilter !== "all" && entry.source !== registrySourceFilter) return false;
+      if (registryTransportFilter === "catalog" && entry.installable) return false;
+      if (
+        registryTransportFilter !== "all" &&
+        registryTransportFilter !== "catalog" &&
+        entry.transport !== registryTransportFilter
+      ) {
+        return false;
+      }
+      return true;
+    });
+    if (registrySort === "name") return unique.toSorted((a, b) => a.title.localeCompare(b.title));
+    if (registrySort === "ready") {
+      return unique.toSorted((a, b) => Number(b.installable) - Number(a.installable));
+    }
+    return unique;
+  }, [registryResults, registrySort, registrySourceFilter, registryTransportFilter]);
 
   // Edit state
   const [editing, setEditing] = useState<EditableServer | null>(null);
   const [savingEdit, setSavingEdit] = useState(false);
+
+  const searchRegistry = useCallback(async () => {
+    const query = registryQuery.trim();
+    if (!api || query.length < 2) return;
+    setRegistrySearching(true);
+    setError(null);
+    try {
+      const result = await api.mcp.registrySearch({ query, limit: 12 });
+      setRegistryResults(result.servers);
+      setRegistryCatalogs(result.catalogs);
+      setRegistryHasSearched(true);
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : "MCP registry search failed");
+    } finally {
+      setRegistrySearching(false);
+    }
+  }, [api, registryQuery]);
+
+  const configureRegistryEntry = useCallback((entry: MCPRegistryEntry) => {
+    if (!entry.installable || !entry.transport || !entry.value) {
+      window.open(entry.catalogUrl, "_blank", "noopener,noreferrer");
+      return;
+    }
+    const shortName = entry.name.split("/").at(-1) ?? entry.name;
+    setNewServer({
+      name: shortName.replace(/[^A-Za-z0-9_-]+/g, "-").replace(/^-+|-+$/g, ""),
+      transport: entry.transport,
+      value: entry.value,
+      headersRows: [],
+    });
+    setNewTestResult(null);
+    if (addServerDetailsRef.current) {
+      addServerDetailsRef.current.open = true;
+      addServerDetailsRef.current.scrollIntoView({ behavior: "smooth", block: "center" });
+    }
+  }, []);
 
   const refresh = useCallback(async () => {
     if (!api) return;
@@ -1126,10 +1219,201 @@ export const MCPSettingsSection: React.FC = () => {
       <div>
         <p className="text-muted mb-4 text-xs">
           Configure global MCP servers. Global config lives in{" "}
-          <code className="text-accent">~/.mux/mcp.jsonc</code>, with optional repo overrides in{" "}
-          <code className="text-accent">./.mux/mcp.jsonc</code> and workspace overrides in{" "}
-          <code className="text-accent">.mux/mcp.local.jsonc</code>.
+          <code className="text-accent">~/.steward/app/mcp.jsonc</code>, with optional repo
+          overrides in <code className="text-accent">./.steward/mcp.jsonc</code> and workspace
+          overrides in <code className="text-accent">.steward/mcp.local.jsonc</code>.
         </p>
+      </div>
+
+      <div className="border-border-medium bg-background-secondary rounded-md border p-4">
+        <div className="mb-2 flex items-center gap-2">
+          <Store className="text-accent h-4 w-4" />
+          <h3 className="text-foreground text-sm font-medium">MCP marketplace</h3>
+        </div>
+        <p className="text-muted mb-3 text-xs">
+          Search the official MCP Registry, Smithery, and Glama together. Directly usable official
+          entries can prefill the existing server form; hosted catalogs open their reviewed setup
+          page.
+        </p>
+        <div className="flex flex-wrap gap-2">
+          <Button
+            variant="secondary"
+            size="sm"
+            onClick={() =>
+              window.open(
+                "https://registry.modelcontextprotocol.io/",
+                "_blank",
+                "noopener,noreferrer"
+              )
+            }
+          >
+            Official MCP Registry <ExternalLink className="h-3.5 w-3.5" />
+          </Button>
+          <Button
+            variant="secondary"
+            size="sm"
+            onClick={() => window.open("https://github.com/mcp", "_blank", "noopener,noreferrer")}
+          >
+            GitHub MCP Registry <ExternalLink className="h-3.5 w-3.5" />
+          </Button>
+          <Button
+            variant="secondary"
+            size="sm"
+            onClick={() =>
+              window.open("https://smithery.ai/servers", "_blank", "noopener,noreferrer")
+            }
+          >
+            Smithery <ExternalLink className="h-3.5 w-3.5" />
+          </Button>
+          <Button
+            variant="secondary"
+            size="sm"
+            onClick={() =>
+              window.open("https://glama.ai/mcp/servers", "_blank", "noopener,noreferrer")
+            }
+          >
+            Glama <ExternalLink className="h-3.5 w-3.5" />
+          </Button>
+          <Button
+            variant="secondary"
+            size="sm"
+            onClick={() =>
+              window.open("https://www.pulsemcp.com/servers", "_blank", "noopener,noreferrer")
+            }
+          >
+            PulseMCP <ExternalLink className="h-3.5 w-3.5" />
+          </Button>
+        </div>
+        <form
+          className="mt-3 flex gap-2"
+          onSubmit={(event) => {
+            event.preventDefault();
+            void searchRegistry();
+          }}
+        >
+          <input
+            type="search"
+            value={registryQuery}
+            onChange={(event) => setRegistryQuery(event.target.value)}
+            placeholder="Search the official MCP registry"
+            aria-label="Search MCP marketplace"
+            className="border-border-medium bg-background-primary text-foreground placeholder:text-muted min-w-0 flex-1 rounded-md border px-3 py-2 text-sm"
+          />
+          <Button
+            type="submit"
+            size="sm"
+            disabled={!api || registryQuery.trim().length < 2 || registrySearching}
+          >
+            {registrySearching && <Loader2 className="h-3.5 w-3.5 animate-spin" />}
+            Search
+          </Button>
+        </form>
+        <div className="mt-3 flex flex-wrap items-center gap-2">
+          <SlidersHorizontal className="text-muted h-4 w-4" />
+          <Select
+            value={registrySourceFilter}
+            onValueChange={(value) => setRegistrySourceFilter(value as MCPRegistrySourceFilter)}
+          >
+            <SelectTrigger className="h-8 w-36" aria-label="Filter MCP servers by source">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">All sources</SelectItem>
+              <SelectItem value="official">Official</SelectItem>
+              <SelectItem value="smithery">Smithery</SelectItem>
+              <SelectItem value="glama">Glama</SelectItem>
+            </SelectContent>
+          </Select>
+          <Select
+            value={registryTransportFilter}
+            onValueChange={(value) =>
+              setRegistryTransportFilter(value as MCPRegistryTransportFilter)
+            }
+          >
+            <SelectTrigger className="h-8 w-40" aria-label="Filter MCP servers by transport">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">Any setup</SelectItem>
+              <SelectItem value="http">Remote HTTP</SelectItem>
+              <SelectItem value="stdio">Local stdio</SelectItem>
+              <SelectItem value="catalog">Catalog setup</SelectItem>
+            </SelectContent>
+          </Select>
+          <Select
+            value={registrySort}
+            onValueChange={(value) => setRegistrySort(value as MCPRegistrySort)}
+          >
+            <SelectTrigger className="h-8 w-36" aria-label="Sort MCP servers">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="relevance">Relevance</SelectItem>
+              <SelectItem value="ready">Ready first</SelectItem>
+              <SelectItem value="name">Name</SelectItem>
+            </SelectContent>
+          </Select>
+          {registryHasSearched && (
+            <span className="text-muted ml-auto text-xs">
+              {visibleRegistryResults.length} results
+            </span>
+          )}
+        </div>
+        {registryCatalogs.length > 0 && (
+          <div className="mt-2 flex flex-wrap gap-3" aria-label="MCP catalog status">
+            {registryCatalogs.map((catalog) => (
+              <span key={catalog.source} className="text-muted flex items-center gap-1 text-xs">
+                <span
+                  className={`h-1.5 w-1.5 rounded-full ${catalog.available ? "bg-success" : "bg-destructive"}`}
+                />
+                {catalog.source} {catalog.available ? "online" : "unavailable"}
+              </span>
+            ))}
+          </div>
+        )}
+        {visibleRegistryResults.length > 0 && (
+          <div className="mt-3 space-y-2">
+            {visibleRegistryResults.map((entry) => (
+              <div
+                key={`${entry.source}:${entry.name}`}
+                className="border-border-light flex flex-col gap-2 rounded-md border p-3 sm:flex-row sm:items-center"
+              >
+                <div className="min-w-0 flex-1">
+                  <div className="text-foreground truncate text-sm font-medium">{entry.title}</div>
+                  <div className="text-accent text-[11px] uppercase">{entry.source}</div>
+                  <div className="text-muted line-clamp-2 text-xs">{entry.description}</div>
+                </div>
+                <div className="flex shrink-0 gap-2">
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={() =>
+                      window.open(
+                        entry.repositoryUrl ?? entry.catalogUrl,
+                        "_blank",
+                        "noopener,noreferrer"
+                      )
+                    }
+                  >
+                    Review <ExternalLink className="h-3.5 w-3.5" />
+                  </Button>
+                  <Button size="sm" onClick={() => configureRegistryEntry(entry)}>
+                    {!entry.installable
+                      ? "Open catalog"
+                      : entry.requiresConfiguration
+                        ? "Configure"
+                        : "Use"}
+                  </Button>
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+        {registryHasSearched && !registrySearching && visibleRegistryResults.length === 0 && (
+          <div className="border-border-light text-muted mt-3 rounded-md border border-dashed px-4 py-8 text-center text-sm">
+            No MCP servers match this search and filter combination.
+          </div>
+        )}
       </div>
 
       {/* MCP Servers */}
@@ -1405,7 +1689,7 @@ export const MCPSettingsSection: React.FC = () => {
             </div>
 
             {/* Add server form */}
-            <details className="group mt-3">
+            <details ref={addServerDetailsRef} className="group mt-3">
               <summary className="text-accent hover:text-accent/80 flex cursor-pointer list-none items-center gap-1 text-sm font-medium">
                 <ChevronRight className="h-4 w-4 transition-transform group-open:rotate-90" />
                 Add server

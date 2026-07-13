@@ -10,6 +10,7 @@ import { TestTempDir } from "./testHelpers";
 import {
   assertValidSkillId,
   fetchSkillContent,
+  installCatalogSkill,
   parseSource,
   searchSkillsCatalog,
   tryParseSource,
@@ -717,6 +718,68 @@ describe("fetchSkillContent", () => {
     );
 
     mkdtempSpy.mockRestore();
+  });
+});
+
+describe("installCatalogSkill", () => {
+  it("installs the complete skill directory into the Steward skills root", async () => {
+    using source = new TestTempDir("test-install-catalog-skill-source");
+    using destination = new TestTempDir("test-install-catalog-skill-destination");
+    const skillDir = path.join(source.path, "skills", "my-skill");
+    await fsPromises.mkdir(path.join(skillDir, "references"), { recursive: true });
+    await fsPromises.writeFile(
+      path.join(skillDir, "SKILL.md"),
+      "---\nname: my-skill\ndescription: Test skill\n---\nBody\n"
+    );
+    await fsPromises.writeFile(path.join(skillDir, "references", "guide.md"), "Guide\n");
+
+    spyOn(fsPromises, "mkdtemp").mockResolvedValue(source.path);
+    spyOn(disposableExec, "execFileAsync").mockImplementation((_file: string, args: string[]) => {
+      if (args.includes("--version")) {
+        return createMockExecResult(
+          Promise.resolve({ stdout: "git version 2.40.0\n", stderr: "" })
+        );
+      }
+      if (args.includes("rev-parse")) {
+        return createMockExecResult(Promise.resolve({ stdout: "main\n", stderr: "" }));
+      }
+      return createMockExecResult(Promise.resolve({ stdout: "", stderr: "" }));
+    });
+
+    await installCatalogSkill({
+      owner: "owner",
+      repo: "repo",
+      skillId: "my-skill",
+      skillsRoot: destination.path,
+    });
+
+    expect(
+      await fsPromises.readFile(path.join(destination.path, "my-skill", "SKILL.md"), "utf8")
+    ).toContain("name: my-skill");
+    expect(
+      await fsPromises.readFile(
+        path.join(destination.path, "my-skill", "references", "guide.md"),
+        "utf8"
+      )
+    ).toBe("Guide\n");
+  });
+
+  it("does not overwrite an installed skill", async () => {
+    using destination = new TestTempDir("test-install-catalog-skill-existing");
+    const existing = path.join(destination.path, "my-skill");
+    await fsPromises.mkdir(existing, { recursive: true });
+    await fsPromises.writeFile(path.join(existing, "SKILL.md"), "existing\n");
+
+    // eslint-disable-next-line @typescript-eslint/await-thenable -- Bun's expect().rejects.toThrow() is thenable at runtime
+    await expect(
+      installCatalogSkill({
+        owner: "owner",
+        repo: "repo",
+        skillId: "my-skill",
+        skillsRoot: destination.path,
+      })
+    ).rejects.toThrow("already installed");
+    expect(await fsPromises.readFile(path.join(existing, "SKILL.md"), "utf8")).toBe("existing\n");
   });
 });
 

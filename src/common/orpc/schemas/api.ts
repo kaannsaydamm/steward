@@ -364,6 +364,10 @@ export const providers = {
     }),
     output: ResultSchema(z.void(), z.string()),
   },
+  fetchCustomProviderModels: {
+    input: z.object({ provider: z.string().trim().min(1).max(100) }).strict(),
+    output: z.object({ models: z.array(ProviderModelEntrySchema) }).strict(),
+  },
   list: {
     input: z.void(),
     output: z.array(z.string()),
@@ -889,6 +893,34 @@ export const projects = {
  * Global config lives in <muxHome>/mcp.jsonc, with optional repo overrides in <projectPath>/.mux/mcp.jsonc.
  */
 export const mcp = {
+  registrySearch: {
+    input: z.object({
+      query: z.string().trim().min(2).max(100),
+      limit: z.number().int().min(1).max(25),
+    }),
+    output: z.object({
+      servers: z.array(
+        z.object({
+          name: z.string().min(1),
+          title: z.string().min(1),
+          description: z.string(),
+          source: z.enum(["official", "smithery", "glama"]),
+          transport: z.enum(["stdio", "http"]).optional(),
+          value: z.string().min(1).optional(),
+          repositoryUrl: z.string().url().optional(),
+          catalogUrl: z.string().url(),
+          installable: z.boolean(),
+          requiresConfiguration: z.boolean(),
+        })
+      ),
+      catalogs: z.array(
+        z.object({
+          source: z.enum(["official", "smithery", "glama"]),
+          available: z.boolean(),
+        })
+      ),
+    }),
+  },
   list: {
     input: MCPListParamsSchema,
     output: MCPServerMapSchema,
@@ -912,6 +944,289 @@ export const mcp = {
   setToolAllowlist: {
     input: MCPSetToolAllowlistGlobalParamsSchema,
     output: ResultSchema(z.void(), z.string()),
+  },
+};
+
+const ToolGovernanceConfigSchema = z
+  .object({
+    auditEnabled: z.boolean(),
+    retentionDays: z.number().int().min(1).max(365),
+    maxEntries: z.number().int().min(100).max(50_000),
+    disabledTools: z.array(z.string().regex(/^[A-Za-z0-9_.:-]+$/u)).max(250),
+  })
+  .strict();
+
+const ToolAuditEntrySchema = z
+  .object({
+    id: z.string(),
+    workspaceId: z.string(),
+    toolName: z.string(),
+    startedAt: z.number(),
+    completedAt: z.number(),
+    durationMs: z.number().nonnegative(),
+    outcome: z.enum(["completed", "failed"]),
+    parentToolCallId: z.string().optional(),
+  })
+  .strict();
+
+export const toolGovernance = {
+  get: { input: z.object({}).strict(), output: ToolGovernanceConfigSchema },
+  set: { input: ToolGovernanceConfigSchema, output: ToolGovernanceConfigSchema },
+  listAudit: {
+    input: z
+      .object({
+        toolName: z.string().optional(),
+        workspaceId: z.string().optional(),
+        outcome: z.enum(["completed", "failed"]).optional(),
+        limit: z.number().int().min(1).max(1000).optional(),
+      })
+      .strict(),
+    output: z.array(ToolAuditEntrySchema),
+  },
+  clearAudit: { input: z.object({}).strict(), output: z.object({ success: z.literal(true) }) },
+};
+
+const VisualWorkflowNodeIdSchema = z.string().regex(/^[a-z0-9][a-z0-9-]{0,62}$/u);
+const VisualWorkflowPositionSchema = z
+  .object({
+    x: z.number().finite().min(-100_000).max(100_000),
+    y: z.number().finite().min(-100_000).max(100_000),
+  })
+  .strict();
+const VisualWorkflowActionKindSchema = z.enum([
+  "http-request",
+  "websocket",
+  "shell",
+  "powershell",
+  "ssh",
+  "file-read",
+  "file-write",
+  "build",
+  "test",
+  "git",
+  "mcp-tool",
+  "subworkflow",
+  "transform",
+  "container",
+  "database",
+  "notification",
+]);
+const VisualWorkflowActionConfigSchema = z
+  .object({
+    target: z.string().max(4096),
+    operation: z.string().max(20_000),
+    payload: z.string().max(100_000),
+    options: z.string().max(20_000),
+  })
+  .strict();
+const VisualWorkflowNodeSchema = z.discriminatedUnion("type", [
+  z
+    .object({
+      id: VisualWorkflowNodeIdSchema,
+      type: z.literal("action"),
+      title: z.string().trim().min(1).max(80),
+      actionKind: VisualWorkflowActionKindSchema,
+      config: VisualWorkflowActionConfigSchema,
+      position: VisualWorkflowPositionSchema,
+    })
+    .strict(),
+  z
+    .object({
+      id: VisualWorkflowNodeIdSchema,
+      type: z.literal("input"),
+      title: z.string().trim().min(1).max(80),
+      position: VisualWorkflowPositionSchema,
+    })
+    .strict(),
+  z
+    .object({
+      id: VisualWorkflowNodeIdSchema,
+      type: z.literal("agent"),
+      title: z.string().trim().min(1).max(80),
+      prompt: z.string().trim().min(1).max(8000),
+      agentId: z.enum(["explore", "plan", "exec"]),
+      model: z.string().trim().min(1).max(300).optional(),
+      position: VisualWorkflowPositionSchema,
+    })
+    .strict(),
+  z
+    .object({
+      id: VisualWorkflowNodeIdSchema,
+      type: z.literal("output"),
+      title: z.string().trim().min(1).max(80),
+      position: VisualWorkflowPositionSchema,
+    })
+    .strict(),
+]);
+const VisualWorkflowEdgeSchema = z
+  .object({
+    id: VisualWorkflowNodeIdSchema,
+    source: VisualWorkflowNodeIdSchema,
+    target: VisualWorkflowNodeIdSchema,
+  })
+  .strict();
+
+export const VisualWorkflowSpecSchema = z
+  .object({
+    version: z.literal(2),
+    slug: z.string().regex(/^[a-z0-9][a-z0-9-]{1,62}$/u),
+    name: z.string().trim().min(2).max(80),
+    description: z.string().trim().min(2).max(240),
+    nodes: z.array(VisualWorkflowNodeSchema).min(3).max(512),
+    edges: z.array(VisualWorkflowEdgeSchema).min(2).max(4096),
+    updatedAt: z.number(),
+  })
+  .strict();
+
+export const visualWorkflows = {
+  list: { input: z.object({}).strict(), output: z.array(VisualWorkflowSpecSchema) },
+  save: {
+    input: VisualWorkflowSpecSchema.omit({ updatedAt: true }),
+    output: VisualWorkflowSpecSchema,
+  },
+  compile: {
+    input: VisualWorkflowSpecSchema.omit({ updatedAt: true }),
+    output: z.object({ source: z.string() }).strict(),
+  },
+  generate: {
+    input: z
+      .object({
+        workspaceId: z.string().trim().min(1).max(200),
+        model: z.string().trim().min(1).max(300),
+        request: z.string().trim().min(2).max(50_000),
+        current: VisualWorkflowSpecSchema.omit({ updatedAt: true }),
+      })
+      .strict(),
+    output: z
+      .object({
+        spec: VisualWorkflowSpecSchema.omit({ updatedAt: true }),
+        modelUsed: z.string(),
+      })
+      .strict(),
+  },
+  run: {
+    input: z
+      .object({
+        slug: VisualWorkflowSpecSchema.shape.slug,
+        workspaceId: z.string().trim().min(1),
+        input: z.string().max(100_000),
+      })
+      .strict(),
+    output: z
+      .object({
+        runId: WorkflowRunIdSchema,
+        status: WorkflowRunStatusSchema,
+        result: z.unknown(),
+      })
+      .strict(),
+  },
+  remove: {
+    input: z.object({ slug: VisualWorkflowSpecSchema.shape.slug }).strict(),
+    output: z.object({ success: z.literal(true) }),
+  },
+};
+
+export const dataArchive = {
+  export: {
+    input: z.object({ archivePath: z.string().trim().min(1).max(4096) }).strict(),
+    output: z.object({ archivePath: z.string() }).strict(),
+  },
+  scheduleImport: {
+    input: z.object({ archivePath: z.string().trim().min(1).max(4096) }).strict(),
+    output: z.object({ archivePath: z.string(), restartRequired: z.literal(true) }).strict(),
+  },
+  getPendingImport: {
+    input: z.object({}).strict(),
+    output: z
+      .object({
+        archivePath: z.string().nullable(),
+        dataRoot: z.string(),
+        defaultExportPath: z.string(),
+      })
+      .strict(),
+  },
+  cancelPendingImport: {
+    input: z.object({}).strict(),
+    output: z.object({ success: z.literal(true) }).strict(),
+  },
+};
+
+const ScheduledAgentJobSchema = z
+  .object({
+    id: z.string().uuid(),
+    name: z.string(),
+    workspaceId: z.string(),
+    prompt: z.string(),
+    agentId: z.enum(["explore", "plan", "exec"]),
+    intervalMinutes: z.number().int().min(1).max(525_600),
+    enabled: z.boolean(),
+    createdAt: z.number(),
+    lastRunAt: z.number().optional(),
+    lastStatus: z.enum(["started", "failed"]).optional(),
+    lastError: z.string().optional(),
+    lastTaskId: z.string().optional(),
+    nextRunAt: z.number(),
+  })
+  .strict();
+
+export const schedules = {
+  list: { input: z.object({}).strict(), output: z.array(ScheduledAgentJobSchema) },
+  create: {
+    input: z
+      .object({
+        name: z.string().trim().min(1).max(100),
+        workspaceId: z.string().trim().min(1).max(200),
+        prompt: z.string().trim().min(1).max(20_000),
+        agentId: z.enum(["explore", "plan", "exec"]),
+        intervalMinutes: z.number().int().min(1).max(525_600),
+      })
+      .strict(),
+    output: ScheduledAgentJobSchema,
+  },
+  setEnabled: {
+    input: z.object({ id: z.string().uuid(), enabled: z.boolean() }).strict(),
+    output: ScheduledAgentJobSchema,
+  },
+  runNow: {
+    input: z.object({ id: z.string().uuid() }).strict(),
+    output: ScheduledAgentJobSchema,
+  },
+  remove: {
+    input: z.object({ id: z.string().uuid() }).strict(),
+    output: z.object({ success: z.literal(true) }).strict(),
+  },
+};
+
+const TelegramBridgeConfigSchema = z
+  .object({
+    enabled: z.boolean(),
+    workspaceId: z.string().max(200),
+    agentId: z.enum(["explore", "plan", "exec"]),
+    allowedChatIds: z.array(z.string().regex(/^-?\d+$/u)).max(100),
+  })
+  .strict();
+
+export const telegram = {
+  get: {
+    input: z.object({}).strict(),
+    output: z
+      .object({
+        config: TelegramBridgeConfigSchema,
+        status: z
+          .object({
+            running: z.boolean(),
+            tokenConfigured: z.boolean(),
+            lastError: z.string().optional(),
+            botUsername: z.string().optional(),
+          })
+          .strict(),
+      })
+      .strict(),
+  },
+  set: { input: TelegramBridgeConfigSchema, output: TelegramBridgeConfigSchema },
+  test: {
+    input: z.object({}).strict(),
+    output: z.object({ username: z.string() }).strict(),
   },
 };
 
@@ -1865,6 +2180,42 @@ export const agentSkills = {
   get: {
     input: AgentDiscoveryInputSchema.and(z.object({ skillName: SkillNameSchema })),
     output: AgentSkillPackageSchema,
+  },
+  catalogSearch: {
+    input: z.object({
+      query: z.string().trim().min(2).max(100),
+      limit: z.number().int().min(1).max(50),
+    }),
+    output: z.object({
+      skills: z.array(
+        z.object({
+          skillId: SkillNameSchema,
+          name: z.string().min(1),
+          owner: z.string().min(1).optional(),
+          repo: z.string().min(1).optional(),
+          installs: z.number().int().nonnegative(),
+          url: z.string().url(),
+          summary: z.string(),
+          source: z.enum(["skills.sh", "clawhub"]),
+          installable: z.boolean(),
+          installed: z.boolean(),
+        })
+      ),
+      catalogs: z.array(
+        z.object({
+          source: z.enum(["skills.sh", "clawhub"]),
+          available: z.boolean(),
+        })
+      ),
+    }),
+  },
+  installFromCatalog: {
+    input: z.object({
+      owner: z.string().regex(/^[A-Za-z0-9_.-]+$/),
+      repo: z.string().regex(/^[A-Za-z0-9_.-]+$/),
+      skillId: SkillNameSchema,
+    }),
+    output: z.object({ success: z.boolean(), error: z.string().optional() }),
   },
 };
 

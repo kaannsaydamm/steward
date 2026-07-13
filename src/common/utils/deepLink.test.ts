@@ -2,17 +2,24 @@ import { describe, expect, test } from "bun:test";
 import { parseMuxDeepLink, resolveProjectPathFromProjectQuery } from "./deepLink";
 
 describe("parseMuxDeepLink", () => {
-  test("parses mux://chat/new", () => {
+  test("parses steward://chat/new", () => {
     const payload = parseMuxDeepLink(
-      "mux://chat/new/?project=mux&projectPath=%2Ftmp%2Frepo&projectId=proj_123&prompt=hello%20world"
+      "steward://chat/new/?project=steward&projectPath=%2Ftmp%2Frepo&projectId=proj_123&prompt=hello%20world"
     );
 
     expect(payload).toEqual({
       type: "new_chat",
-      project: "mux",
+      project: "steward",
       projectPath: "/tmp/repo",
       projectId: "proj_123",
       prompt: "hello world",
+    });
+  });
+
+  test("accepts legacy mux:// links", () => {
+    expect(parseMuxDeepLink("mux://chat/new?prompt=hello")).toEqual({
+      type: "new_chat",
+      prompt: "hello",
     });
   });
 

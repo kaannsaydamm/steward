@@ -69,6 +69,24 @@ export interface WorkflowAgentWaitOptions {
   onExecutionStarted?: () => void | Promise<void>;
 }
 
+export interface WorkflowCommandSpec {
+  id: string;
+  title?: string;
+  shell: "default" | "powershell";
+  command: string;
+  cwd?: string;
+  stdin?: string;
+  options?: string;
+}
+
+export interface WorkflowCommandResult {
+  success: boolean;
+  exitCode: number;
+  stdout: string;
+  stderr: string;
+  durationMs: number;
+}
+
 export type WorkflowAgentResult = StructuredTaskOutput & { taskId: string };
 
 interface WorkflowAgentRunResult {
@@ -197,6 +215,10 @@ export interface WorkflowTaskAdapter {
     spec: WorkflowApplyPatchSpec,
     options?: { abortSignal?: AbortSignal }
   ): Promise<unknown>;
+  runCommand?(
+    spec: WorkflowCommandSpec,
+    options?: { abortSignal?: AbortSignal }
+  ): Promise<WorkflowCommandResult>;
   interruptRun?(): Promise<void>;
   /**
    * Called when the run reaches a terminal state. Not called when the run is
@@ -281,6 +303,67 @@ function parseWorkflowParallelOptions(
 
 function parseParallelAgentsOptions(raw: unknown): { maxParallel?: number } {
   return parseWorkflowParallelOptions(raw, "parallel");
+}
+
+function parseWorkflowCommandSpec(raw: unknown): WorkflowCommandSpec {
+  assert(
+    raw != null && typeof raw === "object" && !Array.isArray(raw),
+    "command requires a spec object"
+  );
+  const value = raw as Record<string, unknown>;
+  assert(typeof value.id === "string" && value.id.length > 0, "command requires a stable id");
+  assert(
+    value.title == null || (typeof value.title === "string" && value.title.length > 0),
+    "command title must be a non-empty string"
+  );
+  assert(
+    value.shell === "default" || value.shell === "powershell",
+    "command shell must be default or powershell"
+  );
+  assert(
+    typeof value.command === "string" && value.command.trim().length > 0,
+    "command requires a non-empty command"
+  );
+  for (const key of ["cwd", "stdin", "options"] as const) {
+    assert(value[key] == null || typeof value[key] === "string", `command ${key} must be a string`);
+  }
+  return {
+    id: value.id,
+    ...(typeof value.title === "string" ? { title: value.title } : {}),
+    shell: value.shell,
+    command: value.command,
+    ...(typeof value.cwd === "string" ? { cwd: value.cwd } : {}),
+    ...(typeof value.stdin === "string" ? { stdin: value.stdin } : {}),
+    ...(typeof value.options === "string" ? { options: value.options } : {}),
+  };
+}
+
+function normalizeWorkflowCommandResult(raw: unknown): WorkflowCommandResult {
+  assert(
+    raw != null && typeof raw === "object" && !Array.isArray(raw),
+    "command result must be an object"
+  );
+  const value = raw as Record<string, unknown>;
+  assert(typeof value.success === "boolean", "command result success must be boolean");
+  assert(
+    typeof value.exitCode === "number" && Number.isInteger(value.exitCode),
+    "command result exitCode must be an integer"
+  );
+  assert(typeof value.stdout === "string", "command result stdout must be a string");
+  assert(typeof value.stderr === "string", "command result stderr must be a string");
+  assert(
+    typeof value.durationMs === "number" &&
+      Number.isFinite(value.durationMs) &&
+      value.durationMs >= 0,
+    "command result durationMs must be a non-negative number"
+  );
+  return {
+    success: value.success,
+    exitCode: value.exitCode,
+    stdout: value.stdout,
+    stderr: value.stderr,
+    durationMs: value.durationMs,
+  };
 }
 
 function isAgentReportWaitTimeoutError(error: unknown): boolean {
@@ -578,6 +661,12 @@ export class WorkflowRunner {
             throw error;
           }
         });
+        setupRuntime.registerFunction("__workflowCommand", async (rawSpec) => {
+          return await this.runCommandStep(runId, sequence, rawSpec, {
+            abortSignal: setupRuntime.getAbortSignal(),
+            leaseGuard,
+          });
+        });
         setupRuntime.registerFunction("__workflowApplyPatch", async (rawSpec) => {
           try {
             return await this.runApplyPatchStep(runId, sequence, rawSpec, {
@@ -824,6 +913,72 @@ export class WorkflowRunner {
     const run = await this.runStore.getRun(runId);
     if (run.status === "interrupted") {
       throw new Error(`Workflow run interrupted: ${runId}`);
+    }
+  }
+
+  private async runCommandStep(
+    runId: string,
+    sequence: WorkflowEventSequence,
+    rawSpec: unknown,
+    options: { abortSignal?: AbortSignal; leaseGuard: WorkflowRunnerLeaseGuard }
+  ): Promise<WorkflowCommandResult> {
+    const spec = parseWorkflowCommandSpec(rawSpec);
+    assertWorkflowStepId(spec.id, "command");
+    const inputHash = hashWorkflowStepInput(spec.id, spec);
+    options.leaseGuard.throwIfLost();
+
+    const existingStep = await this.runStore.getStep(runId, spec.id, inputHash);
+    if (existingStep?.status === "completed" && existingStep.result?.structuredOutput != null) {
+      return normalizeWorkflowCommandResult(existingStep.result.structuredOutput);
+    }
+
+    const startedAt = existingStep?.startedAt ?? this.clock.nowIso();
+    await this.recordStepStarted(runId, { stepId: spec.id, inputHash, startedAt });
+    await this.appendEvent(runId, {
+      sequence: sequence.next(),
+      type: "log",
+      at: this.clock.nowIso(),
+      message: `Command started: ${spec.title ?? spec.id}`,
+      data: { stepId: spec.id, shell: spec.shell, cwd: spec.cwd ?? "." },
+    });
+
+    try {
+      if (this.taskAdapter.runCommand == null) {
+        throw new Error("Workflow task adapter does not support command steps");
+      }
+      const result = normalizeWorkflowCommandResult(
+        await this.taskAdapter.runCommand(spec, { abortSignal: options.abortSignal })
+      );
+      options.leaseGuard.throwIfLost();
+      const reportMarkdown = [
+        `Command ${result.success ? "completed" : "failed"} with exit code ${result.exitCode}.`,
+        result.stdout ? `\n\nstdout:\n\`\`\`text\n${result.stdout}\n\`\`\`` : "",
+        result.stderr ? `\n\nstderr:\n\`\`\`text\n${result.stderr}\n\`\`\`` : "",
+      ].join("");
+      await this.recordStepCompleted(runId, {
+        stepId: spec.id,
+        inputHash,
+        result: { reportMarkdown, structuredOutput: result },
+        startedAt,
+        completedAt: this.clock.nowIso(),
+      });
+      await this.appendEvent(runId, {
+        sequence: sequence.next(),
+        type: "log",
+        at: this.clock.nowIso(),
+        message: `Command ${result.success ? "completed" : "failed"}: ${spec.title ?? spec.id}`,
+        data: { stepId: spec.id, exitCode: result.exitCode, durationMs: result.durationMs },
+      });
+      return result;
+    } catch (error) {
+      await this.recordStepFailed(runId, {
+        stepId: spec.id,
+        inputHash,
+        error: getErrorMessage(error),
+        startedAt,
+        completedAt: this.clock.nowIso(),
+      });
+      throw error;
     }
   }
 
@@ -3296,6 +3451,15 @@ function __muxApplyPatch(spec) {
   }
   return __workflowApplyPatch(spec);
 }
+function __muxCommand(spec) {
+  if (spec === null || typeof spec !== "object" || Array.isArray(spec)) {
+    throw new Error("command requires a spec object");
+  }
+  if (typeof spec.id !== "string" || spec.id.length === 0) {
+    throw new Error("command replay boundary requires a stable id");
+  }
+  return __workflowCommand(spec);
+}
 function __muxNestedWorkflow(scriptPathOrSpec, options) {
   let spec;
   if (typeof scriptPathOrSpec === "string") {
@@ -3393,6 +3557,7 @@ return (async () => await __muxWorkflow({
   parallel: __muxParallel,
   pipeline: __muxPipeline,
   applyPatch: __muxApplyPatch,
+  command: __muxCommand,
   workflow: __muxNestedWorkflow,
 }))();
 `;

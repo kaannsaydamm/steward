@@ -2060,7 +2060,7 @@ export class TaskService {
         : "When you have a final answer, call agent_report exactly once.";
       const sendResult = await this.workspaceService.sendMessage(
         task.id,
-        "Mux restarted while this task was running. Continue where you left off. " +
+        "Steward restarted while this task was running. Continue where you left off. " +
           restartCompletionInstruction,
         {
           model,

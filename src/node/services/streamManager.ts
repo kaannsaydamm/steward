@@ -89,11 +89,11 @@ globalThis.AI_SDK_LOG_WARNINGS = false;
 export type StreamTextOnChunk = NonNullable<Parameters<typeof streamText>[0]["onChunk"]>;
 
 const EMPTY_STREAM_OUTPUT_ERROR_MESSAGE =
-  "The model ended the stream before producing any assistant-visible output. This usually means the upstream stream was dropped rather than completed normally. Mux will retry automatically when possible, and if retries keep failing you should try again or switch models.";
+  "The model ended the stream before producing any assistant-visible output. This usually means the upstream stream was dropped rather than completed normally. Steward will retry automatically when possible, and if retries keep failing you should try again or switch models.";
 
 const MAX_EMPTY_STREAM_RECOVERY_ATTEMPTS = 1;
 const STREAM_TRUNCATED_MESSAGE_SUFFIX =
-  "stream closed unexpectedly before the response completed. Mux will retry automatically when possible, and if retries keep failing you should try again or switch models.";
+  "stream closed unexpectedly before the response completed. Steward will retry automatically when possible, and if retries keep failing you should try again or switch models.";
 
 class EmptyStreamOutputError extends Error {
   constructor() {
@@ -819,7 +819,7 @@ export class StreamManager extends EventEmitter {
    * Uses the Runtime abstraction so temp directories work for both local and SSH runtimes.
    */
   public async createTempDirForStream(streamToken: StreamToken, runtime: Runtime): Promise<string> {
-    const tempDir = `~/.mux-tmp/${streamToken}`;
+    const tempDir = `~/.steward/app/tmp/${streamToken}`;
 
     // Resolve ~ in the runtime's context.
     //

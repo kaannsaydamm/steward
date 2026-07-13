@@ -261,7 +261,7 @@ export class MuxAgent implements Agent {
     this.connection.signal.addEventListener(
       "abort",
       () => {
-        const disconnectError = new Error("Mux ACP connection closed");
+        const disconnectError = new Error("Steward ACP connection closed");
         const activeTurnSessionIds = [...this.turnCompletions.keys()];
         for (const sessionId of activeTurnSessionIds) {
           this.rejectTurn(sessionId, disconnectError);
@@ -293,7 +293,7 @@ export class MuxAgent implements Agent {
     return Promise.resolve({
       protocolVersion: params.protocolVersion,
       agentInfo: {
-        name: "mux",
+        name: "steward",
         version: process.env.MUX_VERSION ?? "dev",
       },
       agentCapabilities: {

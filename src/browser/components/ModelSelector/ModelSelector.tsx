@@ -82,6 +82,7 @@ export const ModelSelector = forwardRef<ModelSelectorRef, ModelSelectorProps>(
     const routing = useRouting();
     const { config: providersConfig } = useProvidersConfig();
     const [isOpen, setIsOpen] = useState(false);
+    const [isTooltipOpen, setIsTooltipOpen] = useState(false);
     const [inputValue, setInputValue] = useState("");
     const [error, setError] = useState<string | null>(null);
     const [showAllModels, setShowAllModels] = useState(false);
@@ -294,7 +295,10 @@ export const ModelSelector = forwardRef<ModelSelectorRef, ModelSelectorProps>(
     return (
       <div ref={containerRef} className={containerClassName}>
         {/* Trigger button */}
-        <Tooltip {...(isOpen || !hasValue ? { open: false } : {})}>
+        <Tooltip
+          open={!isOpen && hasValue && isTooltipOpen}
+          onOpenChange={(open) => setIsTooltipOpen(open && !isOpen && hasValue)}
+        >
           <TooltipTrigger asChild>
             <Button
               type="button"

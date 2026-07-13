@@ -18,7 +18,7 @@
 import { contextBridge, ipcRenderer } from "electron";
 import type { MuxDeepLinkPayload } from "@/common/types/deepLink";
 
-// mux:// deep links can arrive before the React app subscribes.
+// Steward deep links can arrive before the React app subscribes.
 // Buffer them here so the renderer can consume them on mount.
 const pendingDeepLinks: MuxDeepLinkPayload[] = [];
 const deepLinkSubscribers = new Set<(payload: MuxDeepLinkPayload) => void>();

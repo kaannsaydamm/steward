@@ -21,6 +21,10 @@ import { getParseOptions } from "./argv";
 import { resolveServerAuthToken } from "./serverAuthToken";
 import { appendServerCrashLogSync } from "./serverCrashLogging";
 import { shouldExposeLaunchProject } from "./launchProject";
+import {
+  applyPendingStewardDataImport,
+  cancelPendingStewardDataImport,
+} from "@/node/services/dataArchiveService";
 
 // Server-mode crashes can terminate the process before the async logger flushes,
 // so these top-level hooks mirror fatal details into mux.log synchronously.
@@ -63,8 +67,8 @@ const mockWindow: BrowserWindow = {
 async function main(): Promise<void> {
   const program = new Command();
   program
-    .name("mux server")
-    .description("HTTP/WebSocket ORPC server for mux")
+    .name("steward server")
+    .description("HTTP/WebSocket ORPC server for Steward")
     .option("-h, --host <host>", "bind to specific host", "localhost")
     .option("-p, --port <port>", "bind to specific port", "3000")
     .option("--auth-token <token>", "bearer token for HTTP/WS auth (default: auto-generated)")
@@ -112,6 +116,13 @@ async function main(): Promise<void> {
     log.debug("[mux-home] Failed server startup migrations", error);
   }
 
+  try {
+    await applyPendingStewardDataImport(getMuxHome());
+  } catch (error) {
+    log.error("Failed to apply pending Steward data import; continuing with existing data", error);
+    await cancelPendingStewardDataImport(getMuxHome());
+  }
+
   // Early lockfile check: detect an existing server BEFORE initializing services.
   // serviceContainer.initialize() resumes queued/running tasks (via TaskService),
   // so we must fail fast here to avoid orphaned side effects when another server
@@ -120,8 +131,8 @@ async function main(): Promise<void> {
   const earlyLockfile = new ServerLockfile(muxHome);
   const existing = await earlyLockfile.read();
   if (existing) {
-    console.error(`Error: mux API server is already running at ${existing.baseUrl}`);
-    console.error(`Use 'mux api' commands to interact with the running instance.`);
+    console.error(`Error: Steward API server is already running at ${existing.baseUrl}`);
+    console.error(`Use 'steward api' commands to interact with the running instance.`);
     process.exit(1);
   }
 
@@ -160,7 +171,7 @@ async function main(): Promise<void> {
   clearInterval(startupKeepalive);
 
   // --- Startup output ---
-  console.log(`\nmux server v${VERSION.git_describe}`);
+  console.log(`\nSteward server ${VERSION.git_describe}`);
   console.log(`  URL:  ${serverInfo.baseUrl}`);
   if (serverInfo.networkBaseUrls.length > 0) {
     for (const url of serverInfo.networkBaseUrls) {

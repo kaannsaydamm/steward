@@ -71,6 +71,55 @@ function createDeferred() {
 }
 
 describe("WorkflowRunner", () => {
+  test("executes and persists deterministic command steps", async () => {
+    using tmp = new DisposableTempDir("workflow-runner-command");
+    const store = new WorkflowRunStore({
+      sessionDir: tmp.path,
+      staleLeaseMs: WORKFLOW_RUNNER_TEST_STALE_LEASE_MS,
+    });
+    await store.createRun({
+      id: "wfr_command",
+      workspaceId: "workspace-1",
+      workflow: definition,
+      source: `export default function workflow({ command }) {
+  const result = command({ id: "compile", shell: "default", command: "npm run build" });
+  if (!result.success) throw new Error("build failed");
+  return { reportMarkdown: result.stdout, structuredOutput: result };
+}
+`,
+      args: {},
+      now: "2026-05-29T00:00:00.000Z",
+    });
+    const runCommand = mock(async () => ({
+      success: true,
+      exitCode: 0,
+      stdout: "built",
+      stderr: "",
+      durationMs: 12,
+    }));
+    const runner = createRunner(store, {
+      async runAgent() {
+        throw new Error("command workflow must not spawn an agent");
+      },
+      runCommand,
+    });
+
+    const result = await runner.run("wfr_command");
+
+    expect(result).toEqual({
+      reportMarkdown: "built",
+      structuredOutput: {
+        success: true,
+        exitCode: 0,
+        stdout: "built",
+        stderr: "",
+        durationMs: 12,
+      },
+    });
+    expect(runCommand).toHaveBeenCalledTimes(1);
+    expect((await store.getRun("wfr_command")).status).toBe("completed");
+  });
+
   test("runs onRunEnded after a successful workflow", async () => {
     using tmp = new DisposableTempDir("workflow-runner");
     const store = await createRunStore(tmp.path);

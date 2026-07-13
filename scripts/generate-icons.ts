@@ -27,7 +27,7 @@ const ROOT = path.resolve(__dirname, "..");
 
 // Source logos
 const SOURCE_BLACK = path.join(ROOT, "docs", "img", "logo-black.svg");
-const SOURCE_WHITE = path.join(ROOT, "docs", "img", "logo-white.svg");
+const SOURCE_STEWARD = path.join(ROOT, "src", "browser", "assets", "logos", "white-steward-s.svg");
 
 // Build outputs
 const BUILD_DIR = path.join(ROOT, "build");
@@ -69,15 +69,8 @@ type SvgTargetConfig = {
 type LogoTargetConfig = RasterTargetConfig | SvgTargetConfig;
 
 // Keep the source + background pairing centralized so targets stay DRY.
-const MONO_ICON = { source: SOURCE_BLACK, bg: false } as const;
-const APP_ICON = { source: SOURCE_WHITE, bg: true } as const;
-
-// The source SVGs use viewBox="0 0 72 72" with a translate transform, leaving
-// ~68% internal padding around the actual "m" + cursor mark.  This cropped
-// viewBox eliminates that padding so the mark fills the rendered image.
-// Content bounds (after transform): x 8.85…63.15, y 24.5…47.5 → 54.3×23 units.
-// Tight crop with ~0.5u breathing room: "8 24 56 24" → aspect ratio ≈ 2.33:1.
-const TRAY_MARK_CROP = "8 24 56 24";
+const MONO_ICON = { source: SOURCE_STEWARD, bg: false } as const;
+const APP_ICON = { source: SOURCE_STEWARD, bg: true } as const;
 
 // Targets to update (path -> config)
 const LOGO_TARGETS = {
@@ -98,11 +91,7 @@ const LOGO_TARGETS = {
   // iOS Safari uses apple-touch-icon for home screen installs.
   "public/apple-touch-icon.png": { size: 180, ...APP_ICON },
 
-  // Electron Tray Icons – Wide Canvas with "m" Mark (Monochrome on Transparent)
-  //
-  // The source SVGs have heavy internal padding (mark uses ~32% of canvas).
-  // We crop to TRAY_MARK_CROP before rendering so the mark fills the output.
-  //
+  // Electron tray icons.
   // Pixel dimensions: 24×24 @1x → 48×48 @2x → 72×72 @3x.
   // Square canvas; the mark (aspect ≈ 2.33:1) is height-constrained and
   // centered horizontally with transparent side padding.
@@ -110,26 +99,23 @@ const LOGO_TARGETS = {
   // macOS treats the black variant as a template image (adapts to light/dark
   // menu bar automatically). Windows/Linux switch between black/white at
   // runtime based on the OS theme.
-  "public/tray-icon-black.png": { size: 24, ...MONO_ICON, cropViewBox: TRAY_MARK_CROP },
-  "public/tray-icon-black@2x.png": { size: 48, ...MONO_ICON, cropViewBox: TRAY_MARK_CROP },
-  "public/tray-icon-black@3x.png": { size: 72, ...MONO_ICON, cropViewBox: TRAY_MARK_CROP },
+  "public/tray-icon-black.png": { size: 24, ...MONO_ICON },
+  "public/tray-icon-black@2x.png": { size: 48, ...MONO_ICON },
+  "public/tray-icon-black@3x.png": { size: 72, ...MONO_ICON },
   "public/tray-icon-white.png": {
     size: 24,
-    source: SOURCE_WHITE,
+    source: SOURCE_STEWARD,
     bg: false,
-    cropViewBox: TRAY_MARK_CROP,
   },
   "public/tray-icon-white@2x.png": {
     size: 48,
-    source: SOURCE_WHITE,
+    source: SOURCE_STEWARD,
     bg: false,
-    cropViewBox: TRAY_MARK_CROP,
   },
   "public/tray-icon-white@3x.png": {
     size: 72,
-    source: SOURCE_WHITE,
+    source: SOURCE_STEWARD,
     bg: false,
-    cropViewBox: TRAY_MARK_CROP,
   },
 } satisfies Record<string, LogoTargetConfig>;
 
@@ -248,7 +234,7 @@ async function updateAllLogos() {
   // Generate favicons (light/dark)
   await generateFavicon(MONO_ICON.source, FAVICON_OUTPUT);
   console.log(`✓ public/favicon.ico`);
-  await generateFavicon(SOURCE_WHITE, FAVICON_DARK_OUTPUT);
+  await generateFavicon(SOURCE_STEWARD, FAVICON_DARK_OUTPUT);
   console.log(`✓ public/favicon-dark.ico`);
 
   console.log("\n✅ All logos updated successfully!");

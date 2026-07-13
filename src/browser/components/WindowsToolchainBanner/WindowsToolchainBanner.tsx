@@ -57,8 +57,8 @@ export function WindowsToolchainBanner() {
       <div className="flex items-center gap-2">
         <AlertTriangle className="text-warning size-4 shrink-0" />
         <span>
-          Your default shell appears to be WSL. Mux requires Git for Windows (Git Bash) on Windows
-          for reliable git + path handling.
+          Your default shell appears to be WSL. Steward requires Git for Windows (Git Bash) on
+          Windows for reliable git + path handling.
           <a
             href="https://mux.coder.com/install#windows"
             target="_blank"
@@ -67,7 +67,7 @@ export function WindowsToolchainBanner() {
           >
             Install Git for Windows
           </a>{" "}
-          and restart Mux.
+          and restart Steward.
         </span>
       </div>
       <button

@@ -84,6 +84,24 @@ type MuxGatewayLoginStatus = "idle" | "starting" | "waiting" | "success" | "erro
 type CodexOauthFlowStatus = "idle" | "starting" | "waiting" | "error";
 type CopilotLoginStatus = "idle" | "starting" | "waiting" | "success" | "error";
 
+const CUSTOM_PROVIDER_PRESETS = [
+  { id: "nvidia-nim", name: "NVIDIA NIM", baseUrl: "https://integrate.api.nvidia.com/v1" },
+  { id: "novita", name: "Novita AI", baseUrl: "https://api.novita.ai/openai" },
+  { id: "lm-studio", name: "LM Studio", baseUrl: "http://127.0.0.1:1234/v1" },
+  {
+    id: "dashscope",
+    name: "Qwen / DashScope",
+    baseUrl: "https://dashscope.aliyuncs.com/compatible-mode/v1",
+  },
+  { id: "groq", name: "Groq", baseUrl: "https://api.groq.com/openai/v1" },
+  { id: "together", name: "Together AI", baseUrl: "https://api.together.xyz/v1" },
+  {
+    id: "fireworks",
+    name: "Fireworks AI",
+    baseUrl: "https://api.fireworks.ai/inference/v1",
+  },
+] as const;
+
 const OPENAI_SERVICE_TIER_UNSET = "unset";
 
 type OpenAIServiceTier = ServiceTier;
@@ -493,7 +511,7 @@ export function ProvidersSection() {
 
     if (!api) {
       setCodexOauthStatus("error");
-      setCodexOauthError("Mux API not connected.");
+      setCodexOauthError("Steward API not connected.");
       return;
     }
 
@@ -609,7 +627,7 @@ export function ProvidersSection() {
 
     if (!api) {
       setCodexOauthStatus("error");
-      setCodexOauthError("Mux API not connected.");
+      setCodexOauthError("Steward API not connected.");
       return;
     }
 
@@ -683,7 +701,7 @@ export function ProvidersSection() {
 
     if (!api) {
       setCodexOauthStatus("error");
-      setCodexOauthError("Mux API not connected.");
+      setCodexOauthError("Steward API not connected.");
       return;
     }
 
@@ -801,7 +819,7 @@ export function ProvidersSection() {
       if (isDesktop) {
         if (!api) {
           setMuxGatewayLoginStatus("error");
-          setMuxGatewayLoginError("Mux API not connected.");
+          setMuxGatewayLoginError("Steward API not connected.");
           return;
         }
 
@@ -956,8 +974,8 @@ export function ProvidersSection() {
       : muxGatewayLoginInProgress
         ? "Waiting for login..."
         : muxGatewayIsLoggedIn
-          ? "Re-login to Mux Gateway"
-          : "Login to Mux Gateway";
+          ? "Re-login to hosted gateway"
+          : "Login to hosted gateway";
 
   // --- GitHub Copilot Device Code Flow ---
   const [copilotLoginStatus, setCopilotLoginStatus] = useState<CopilotLoginStatus>("idle");
@@ -1101,6 +1119,10 @@ export function ProvidersSection() {
     Record<string, string>
   >({});
   const [customProviderRemoving, setCustomProviderRemoving] = useState<string | null>(null);
+  const [customProviderDiscovering, setCustomProviderDiscovering] = useState<string | null>(null);
+  const [customProviderDiscoveryMessages, setCustomProviderDiscoveryMessages] = useState<
+    Record<string, string>
+  >({});
 
   useEffect(() => {
     if (!api) {
@@ -1150,7 +1172,7 @@ export function ProvidersSection() {
       return;
     }
 
-    // Fetch lazily when the user expands the Mux Gateway provider.
+    // Fetch lazily when the user expands the hosted gateway provider.
     //
     // Important: avoid auto-retrying after a failure. If the request fails,
     // `muxGatewayAccountStatus` remains null and we'd otherwise trigger a refresh
@@ -1414,7 +1436,7 @@ export function ProvidersSection() {
     setCustomProviderSubmitAttempted(true);
 
     if (!api) {
-      setCustomProviderSubmitError("Mux API not connected.");
+      setCustomProviderSubmitError("Steward API not connected.");
       return;
     }
 
@@ -1503,7 +1525,7 @@ export function ProvidersSection() {
       if (!api) {
         setCustomProviderRemoveErrors((prev) => ({
           ...prev,
-          [provider]: "Mux API not connected.",
+          [provider]: "Steward API not connected.",
         }));
         return;
       }
@@ -1581,7 +1603,7 @@ export function ProvidersSection() {
     <div className="space-y-2">
       <p className="text-muted mb-4 text-xs">
         Configure API keys and endpoints for AI providers. Keys are stored in{" "}
-        <code className="text-accent">~/.mux/providers.jsonc</code>
+        <code className="text-accent">~/.steward/app/providers.jsonc</code>
       </p>
 
       {policyState.status.state === "enforced" && (
@@ -1688,7 +1710,7 @@ export function ProvidersSection() {
                     <div className="border-border-medium space-y-3 border-t px-4 py-3">
                       {isBuiltInProvider(provider) && isCustomOpenAICompatible && (
                         <div className="border-warning/40 bg-warning/10 text-warning rounded-md border px-3 py-2 text-xs">
-                          This custom provider id now matches a built-in provider. Mux will keep
+                          This custom provider id now matches a built-in provider. Steward will keep
                           using your custom configuration.
                         </div>
                       )}
@@ -1778,14 +1800,14 @@ export function ProvidersSection() {
                               {muxGatewayLoginStatus === "waiting" && muxGatewayAuthorizeUrl && (
                                 <Button
                                   size="sm"
-                                  aria-label="Copy and open Mux Gateway authorization page"
+                                  aria-label="Copy and open hosted gateway authorization page"
                                   onClick={() => {
                                     void navigator.clipboard.writeText(muxGatewayAuthorizeUrl);
                                     window.open(muxGatewayAuthorizeUrl, "_blank", "noopener");
                                   }}
                                   className="h-8 px-3 text-xs"
                                 >
-                                  Copy & Open Mux Gateway
+                                  Copy & Open hosted gateway
                                 </Button>
                               )}
 
@@ -1834,7 +1856,7 @@ export function ProvidersSection() {
                                 Account
                               </label>
                               <span className="text-muted text-xs">
-                                Balance and limits from Mux Gateway
+                                Balance and limits from the hosted gateway
                               </span>
                             </div>
                             <Button
@@ -2664,6 +2686,65 @@ export function ProvidersSection() {
                           <div className="flex items-center justify-between gap-3">
                             <div>
                               <label className="text-foreground block text-xs font-medium">
+                                Live model discovery
+                              </label>
+                              <span className="text-muted text-xs">
+                                Fetch <code>/models</code> from this provider and save the returned
+                                IDs.
+                              </span>
+                            </div>
+                            <Button
+                              variant="secondary"
+                              size="sm"
+                              onClick={() => {
+                                if (!api) return;
+                                setCustomProviderDiscovering(provider);
+                                setCustomProviderDiscoveryMessages((current) => ({
+                                  ...current,
+                                  [provider]: "",
+                                }));
+                                void api.providers
+                                  .fetchCustomProviderModels({ provider })
+                                  .then(async ({ models }) => {
+                                    const saved = await api.providers.setModels({
+                                      provider,
+                                      models,
+                                    });
+                                    if (!saved.success) throw new Error(saved.error);
+                                    const contextLimitCount = models.filter(
+                                      (model) =>
+                                        typeof model !== "string" &&
+                                        model.contextWindowTokens !== undefined
+                                    ).length;
+                                    setCustomProviderDiscoveryMessages((current) => ({
+                                      ...current,
+                                      [provider]: `${models.length} live model${models.length === 1 ? "" : "s"} saved · ${contextLimitCount} context limit${contextLimitCount === 1 ? "" : "s"} detected.`,
+                                    }));
+                                    await refresh();
+                                  })
+                                  .catch((cause: unknown) =>
+                                    setCustomProviderDiscoveryMessages((current) => ({
+                                      ...current,
+                                      [provider]: getErrorMessage(cause),
+                                    }))
+                                  )
+                                  .finally(() => setCustomProviderDiscovering(null));
+                              }}
+                              disabled={!api || customProviderDiscovering === provider}
+                            >
+                              {customProviderDiscovering === provider
+                                ? "Discovering..."
+                                : "Discover models"}
+                            </Button>
+                          </div>
+                          {customProviderDiscoveryMessages[provider] && (
+                            <p className="text-muted text-xs">
+                              {customProviderDiscoveryMessages[provider]}
+                            </p>
+                          )}
+                          <div className="flex items-center justify-between gap-3">
+                            <div>
+                              <label className="text-foreground block text-xs font-medium">
                                 Remove custom provider
                               </label>
                               <span className="text-muted text-xs">
@@ -2731,6 +2812,31 @@ export function ProvidersSection() {
 
                 {customProviderFormOpen && (
                   <form className="space-y-3" onSubmit={handleCustomProviderFormSubmit}>
+                    <div className="space-y-1">
+                      <span className="text-muted text-xs">Quick presets</span>
+                      <div className="flex flex-wrap gap-1.5">
+                        {CUSTOM_PROVIDER_PRESETS.map((preset) => (
+                          <Button
+                            key={preset.id}
+                            type="button"
+                            variant="secondary"
+                            size="sm"
+                            onClick={() => {
+                              setCustomProviderId(preset.id);
+                              setCustomProviderDisplayName(preset.name);
+                              setCustomProviderBaseUrl(preset.baseUrl);
+                              setCustomProviderTouchedFields({
+                                providerId: true,
+                                displayName: true,
+                                baseUrl: true,
+                              });
+                            }}
+                          >
+                            {preset.name}
+                          </Button>
+                        ))}
+                      </div>
+                    </div>
                     <label className="block space-y-1">
                       <span className="text-muted text-xs">Provider ID</span>
                       <input

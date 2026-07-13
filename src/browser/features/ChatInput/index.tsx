@@ -716,7 +716,7 @@ const ChatInputInner: React.FC<ChatInputProps> = (props) => {
   });
 
   const voiceInputUnavailableMessage =
-    "Voice input requires a Mux Gateway login or an OpenAI API key. Configure in Settings → Providers.";
+    "Voice input requires a hosted gateway login or an OpenAI API key. Configure it in Settings → Providers.";
 
   // Start creation tutorial when entering creation mode
   useEffect(() => {

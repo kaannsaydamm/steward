@@ -334,7 +334,7 @@ export function buildTaskToolDescription(runtimeMode: RuntimeMode | undefined): 
     "Avoid telling the sub-agent to read your plan file; child workspaces do not automatically have access to it. " +
     "\n\nIf run_in_background is false, waits for the sub-agent to finish and returns the completed report. When grouped sibling tasks are requested via n or variants, the completed result includes one report per spawned task. " +
     "If the foreground wait times out, returns queued/starting/running task metadata with a note (the task continues running); use task_await to monitor progress. " +
-    "If run_in_background is true, returns immediately with queued/starting/running task metadata and the task runs non-blocking: you may end your turn without awaiting it, and Mux wakes this workspace when the task reaches a terminal state so you can integrate its result. Use task_await only when the current request depends on the output before you can answer, or to inspect progress. " +
+    "If run_in_background is true, returns immediately with queued/starting/running task metadata and the task runs non-blocking: you may end your turn without awaiting it, and Steward wakes this workspace when the task reaches a terminal state so you can integrate its result. Use task_await only when the current request depends on the output before you can answer, or to inspect progress. " +
     "Prefer run_in_background: false when spawning a single task — it is equivalent to spawning background + immediately awaiting, but saves a round-trip. " +
     "Use run_in_background: true when launching multiple tasks in parallel so you can act on each as it completes via task_await (which returns on the first completion by default); a foreground grouped spawn (run_in_background: false) instead blocks until every sibling finishes and returns all reports at once. " +
     "Do not call task_await in the same parallel tool-call batch; wait for the returned task metadata first. " +
@@ -1473,7 +1473,7 @@ export const TOOL_DEFINITIONS = {
             .describe(
               "Optional. Short user-facing purpose for this command, shown next to the command in collapsed chat. " +
                 "Use a present-participle phrase in plain English, under 100 characters. " +
-                "Do not repeat the command or include duration, because Mux appends those. " +
+                "Do not repeat the command or include duration, because Steward appends those. " +
                 "Examples: 'Running the unit tests', 'Checking repository state', 'Inspecting build output'."
             ),
           timeout_secs: z
@@ -1758,7 +1758,7 @@ export const TOOL_DEFINITIONS = {
   },
   mux_config_read: {
     description:
-      "Read the mux configuration file. Returns the current configuration with secrets redacted. " +
+      "Read the Steward configuration file. Returns the current configuration with secrets redacted. " +
       "Use 'providers' for ~/.mux/providers.jsonc (API provider settings) or 'config' for ~/.mux/config.json (app settings).",
     schema: z
       .object({
@@ -1771,7 +1771,7 @@ export const TOOL_DEFINITIONS = {
   },
   mux_config_write: {
     description:
-      "Write to the mux configuration file. Applies one or more set/delete operations and validates the full document before writing. " +
+      "Write to the Steward configuration file. Applies one or more set/delete operations and validates the full document before writing. " +
       "Use 'providers' for ~/.mux/providers.jsonc or 'config' for ~/.mux/config.json. " +
       "Requires explicit confirmation via confirm: true.",
     schema: z
@@ -2040,7 +2040,7 @@ export const TOOL_DEFINITIONS = {
   task_apply_git_patch: {
     description:
       "Apply a completed sub-agent task's git-format-patch artifact to the current workspace using `git am`. " +
-      "This is an explicit integration step: mux will not auto-apply patches.",
+      "This is an explicit integration step: Steward will not auto-apply patches.",
     schema: TaskApplyGitPatchToolArgsSchema,
   },
   task_await: {
@@ -2109,7 +2109,7 @@ export const TOOL_DEFINITIONS = {
       "If workflow_run returns status=running or status=backgrounded, await the returned runId with task_await before using or reporting the workflow output. " +
       "After a previous workflow_run error, abort, timeout, or uncertain result, do not start a fresh run until you rediscover existing workflow runs: either omit task_list statuses first, or query pending/running/backgrounded/interrupted/failed/completed together. " +
       "Use task_await for running/backgrounded runs, workflow_resume for pending/interrupted runs, workflow_resume({ mode: 'retry_from_checkpoint' }) only for eligible failed runs, and inspect/refetch completed results instead of rerunning. " +
-      "Use background mode only when you intend to start another workflow/task or do independent work while the workflow runs; a background run is non-blocking and Mux wakes this workspace with the terminal workflow result, so call task_await only when the current request depends on the output before you can answer.",
+      "Use background mode only when you intend to start another workflow/task or do independent work while the workflow runs; a background run is non-blocking and Steward wakes this workspace with the terminal workflow result, so call task_await only when the current request depends on the output before you can answer.",
     schema: WorkflowRunToolArgsSchema,
   },
   workflow_resume: {
@@ -2448,7 +2448,7 @@ CREATE TABLE IF NOT EXISTS delegation_rollups (
   },
   code_execution: {
     description:
-      "Execute JavaScript code in a sandboxed environment with access to Mux tools. " +
+      "Execute JavaScript code in a sandboxed environment with access to Steward tools. " +
       "Available for multi-tool workflows when PTC experiment is enabled.",
     schema: z.object({
       code: z.string().min(1).describe("JavaScript code to execute in the PTC sandbox"),

@@ -1,9 +1,11 @@
-import { existsSync, lstatSync, renameSync, rmSync, symlinkSync } from "fs";
+import { existsSync, lstatSync, mkdirSync, renameSync, rmSync, symlinkSync } from "fs";
 import { homedir } from "os";
 import { join } from "path";
 
 const LEGACY_MUX_DIR_NAME = ".cmux";
 const MUX_DIR_NAME = ".mux";
+const STEWARD_DIR_NAME = ".steward";
+const STEWARD_APP_DIR_NAME = "app";
 
 /**
  * Session-dir file holding the active chat history epoch (latest compaction
@@ -28,29 +30,43 @@ export const CHAT_ARCHIVE_FILE_NAME = "chat-archive.jsonl";
 export const HEADLESS_USAGE_FILE_NAME = "headless-usage.jsonl";
 
 /**
- * Migrate from the legacy ~/.cmux directory into ~/.mux for rebranded installs.
- * Called on startup to preserve data created by earlier releases.
+ * Migrate data from the upstream ~/.mux location into Steward's namespaced home.
  *
- * If .mux exists, nothing happens (already migrated).
- * If .cmux exists but .mux doesn't, moves .cmux → .mux and creates symlink.
- * This ensures old scripts/tools referencing ~/.cmux continue working.
+ * Steward lives under ~/.steward/app so it can coexist with the earlier Rust
+ * runtime, whose config and database already live directly under ~/.steward.
  */
 export function migrateLegacyMuxHome(): void {
-  const oldPath = join(homedir(), LEGACY_MUX_DIR_NAME);
-  const newPath = join(homedir(), MUX_DIR_NAME);
-
-  // If .mux exists, we're done (already migrated or fresh install)
-  if (existsSync(newPath)) {
+  // Explicit roots are commonly used for tests and isolated server instances.
+  // They must never trigger a migration of the user's real home directory.
+  // eslint-disable-next-line no-restricted-syntax, no-restricted-globals
+  if (process.env.STEWARD_ROOT || process.env.MUX_ROOT) {
     return;
   }
 
-  // If .cmux exists, move it and create symlink for backward compatibility
-  if (existsSync(oldPath)) {
-    renameSync(oldPath, newPath);
-    symlinkSync(newPath, oldPath, "dir");
+  const home = homedir();
+  const cmuxPath = join(home, LEGACY_MUX_DIR_NAME);
+  const muxPath = join(home, MUX_DIR_NAME);
+  const stewardRoot = join(home, STEWARD_DIR_NAME);
+  const stewardAppPath = join(stewardRoot, STEWARD_APP_DIR_NAME);
+
+  if (existsSync(stewardAppPath)) {
+    return;
   }
 
-  // If neither exists, nothing to do (will be created on first use)
+  const legacyPath = existsSync(muxPath) ? muxPath : existsSync(cmuxPath) ? cmuxPath : null;
+  if (legacyPath === null) {
+    return;
+  }
+
+  mkdirSync(stewardRoot, { recursive: true });
+  renameSync(legacyPath, stewardAppPath);
+
+  try {
+    symlinkSync(stewardAppPath, legacyPath, "dir");
+  } catch {
+    // Symlink creation may require elevated privileges on Windows. The data has
+    // already migrated successfully, so compatibility linking is best-effort.
+  }
 }
 
 const OBSOLETE_MUX_BIN_ARTIFACTS = ["agent-browser", "agent-browser.cmd"] as const;
@@ -85,8 +101,8 @@ export function cleanupObsoleteMuxBinArtifacts(rootDir?: string): void {
 }
 
 /**
- * Get the root directory for all mux configuration and data.
- * Can be overridden with MUX_ROOT environment variable.
+ * Get the root directory for all Steward configuration and data.
+ * STEWARD_ROOT is canonical; MUX_ROOT remains a compatibility fallback.
  * Appends '-dev' suffix when NODE_ENV=development (explicit dev mode).
  *
  * This is a getter function to support test mocking of os.homedir().
@@ -96,16 +112,21 @@ export function cleanupObsoleteMuxBinArtifacts(rootDir?: string): void {
  */
 export function getMuxHome(): string {
   // eslint-disable-next-line no-restricted-syntax, no-restricted-globals
+  if (process.env.STEWARD_ROOT) {
+    // eslint-disable-next-line no-restricted-syntax, no-restricted-globals
+    return process.env.STEWARD_ROOT;
+  }
+
+  // eslint-disable-next-line no-restricted-syntax, no-restricted-globals
   if (process.env.MUX_ROOT) {
     // eslint-disable-next-line no-restricted-syntax, no-restricted-globals
     return process.env.MUX_ROOT;
   }
 
-  const baseName = MUX_DIR_NAME;
   // Use -dev suffix only when explicitly in development mode
   // eslint-disable-next-line no-restricted-syntax, no-restricted-globals
   const suffix = process.env.NODE_ENV === "development" ? "-dev" : "";
-  return join(homedir(), baseName + suffix);
+  return join(homedir(), STEWARD_DIR_NAME, STEWARD_APP_DIR_NAME + suffix);
 }
 
 /**

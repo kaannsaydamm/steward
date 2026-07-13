@@ -205,7 +205,7 @@ async function runTrust(options: TrustCLIOptions): Promise<number> {
 export async function main(): Promise<number> {
   const program = new Command();
   program
-    .name("mux trust")
+    .name("steward trust")
     .description(
       "Trust the project in the current directory (or --dir) so repo-controlled automation (project workflows, hooks, .mux configuration) can run"
     )

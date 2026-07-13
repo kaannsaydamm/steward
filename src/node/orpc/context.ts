@@ -46,6 +46,9 @@ import type { AnalyticsService } from "@/node/services/analytics/analyticsServic
 import type { DesktopBridgeServer } from "@/node/services/desktop/DesktopBridgeServer";
 import type { DesktopSessionManager } from "@/node/services/desktop/DesktopSessionManager";
 import type { DesktopTokenManager } from "@/node/services/desktop/DesktopTokenManager";
+import type { ToolAuditService } from "@/node/services/toolGovernanceService";
+import type { SchedulerService } from "@/node/services/schedulerService";
+import type { TelegramBridgeService } from "@/node/services/telegramBridgeService";
 
 export interface ORPCContext {
   config: Config;
@@ -95,5 +98,8 @@ export interface ORPCContext {
   desktopTokenManager: DesktopTokenManager;
   desktopBridgeServer: DesktopBridgeServer;
   workflowRuntimeFactory: IJSRuntimeFactory;
+  toolAuditService: ToolAuditService;
+  schedulerService: SchedulerService;
+  telegramBridgeService: TelegramBridgeService;
   headers?: IncomingHttpHeaders;
 }

@@ -32,7 +32,7 @@ export function BashMonitorWakeMessageContent(
   const title = hasLost
     ? hasMatch
       ? "Background monitor updates"
-      : "Background monitors lost (Mux restarted)"
+      : "Background monitors lost (Steward restarted)"
     : "Background monitor matched output";
 
   return (

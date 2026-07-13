@@ -126,8 +126,8 @@ describe("mux CLI", () => {
     test("--help shows usage", async () => {
       const result = await runCli(["--help"]);
       expect(result.exitCode).toBe(0);
-      expect(result.stdout).toContain("Usage: mux");
-      expect(result.stdout).toContain("Mux - AI agent orchestration");
+      expect(result.stdout).toContain("Usage: steward");
+      expect(result.stdout).toContain("Steward - parallel AI agent orchestration");
       expect(result.stdout).toContain("run");
       expect(result.stdout).toContain("server");
     });
@@ -150,7 +150,7 @@ describe("mux CLI", () => {
     test("--help shows all options", async () => {
       const result = await runCli(["run", "--help"]);
       expect(result.exitCode).toBe(0);
-      expect(result.stdout).toContain("Usage: mux run");
+      expect(result.stdout).toContain("Usage: steward run");
       expect(result.stdout).toContain("--dir");
       expect(result.stdout).toContain("--model");
       expect(result.stdout).toContain("--runtime");
@@ -318,7 +318,7 @@ describe("mux CLI", () => {
     test("--help shows all options", async () => {
       const result = await runCli(["server", "--help"]);
       expect(result.exitCode).toBe(0);
-      expect(result.stdout).toContain("Usage: mux server");
+      expect(result.stdout).toContain("Usage: steward server");
       expect(result.stdout).toContain("--host");
       expect(result.stdout).toContain("--port");
       expect(result.stdout).toContain("--auth-token");
@@ -333,7 +333,7 @@ describe("mux CLI", () => {
     test("--help shows ACP options", async () => {
       const result = await runCli(["acp", "--help"]);
       expect(result.exitCode).toBe(0);
-      expect(result.stdout).toContain("Usage: mux acp");
+      expect(result.stdout).toContain("Usage: steward acp");
       expect(result.stdout).toContain("--server-url");
       expect(result.stdout).toContain("--auth-token");
       expect(result.stdout).toContain("--log-file");

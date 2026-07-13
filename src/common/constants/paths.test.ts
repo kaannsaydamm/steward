@@ -10,7 +10,7 @@ import {
 import { tmpdir } from "os";
 import { join } from "path";
 import { afterEach, describe, expect, test } from "bun:test";
-import { cleanupObsoleteMuxBinArtifacts } from "./paths";
+import { cleanupObsoleteMuxBinArtifacts, getMuxHome } from "./paths";
 
 const tempDirs: string[] = [];
 
@@ -58,5 +58,23 @@ describe("cleanupObsoleteMuxBinArtifacts", () => {
   test("is a no-op when mux bin does not exist", () => {
     const muxRoot = createTempMuxRoot();
     expect(() => cleanupObsoleteMuxBinArtifacts(muxRoot)).not.toThrow();
+  });
+});
+
+describe("getMuxHome", () => {
+  test("prefers the Steward root override", () => {
+    const previousStewardRoot = process.env.STEWARD_ROOT;
+    const previousMuxRoot = process.env.MUX_ROOT;
+    process.env.STEWARD_ROOT = "C:\\steward-test";
+    process.env.MUX_ROOT = "C:\\mux-test";
+
+    try {
+      expect(getMuxHome()).toBe("C:\\steward-test");
+    } finally {
+      if (previousStewardRoot === undefined) delete process.env.STEWARD_ROOT;
+      else process.env.STEWARD_ROOT = previousStewardRoot;
+      if (previousMuxRoot === undefined) delete process.env.MUX_ROOT;
+      else process.env.MUX_ROOT = previousMuxRoot;
+    }
   });
 });

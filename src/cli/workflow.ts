@@ -488,7 +488,7 @@ function configureLogging(options: Pick<WorkflowCLIOptions, "logLevel" | "verbos
 export async function main(): Promise<number> {
   const program = new Command();
   program
-    .name("mux workflow")
+    .name("steward workflow")
     .description(
       "Run mux workflow scripts by explicit script path.\n\nExperimental: invoking this command implicitly enables the dynamic-workflows\nexperiment for this invocation only."
     )

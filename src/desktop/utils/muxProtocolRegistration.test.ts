@@ -42,24 +42,25 @@ describe("getMuxProtocolClientRegistration", () => {
         platform: "win32",
         isPackaged: true,
         defaultApp: undefined,
-        argv: ["/Applications/Mux.app/Contents/MacOS/Mux"],
-        execPath: "/Applications/Mux.app/Contents/MacOS/Mux",
+        argv: ["/Applications/Steward.app/Contents/MacOS/Steward"],
+        execPath: "/Applications/Steward.app/Contents/MacOS/Steward",
       })
     ).toBeNull();
   });
 });
 
 describe("getMuxDeepLinksFromArgv", () => {
-  test("finds mux:// argv entries even when a -- separator is present", () => {
+  test("finds Steward and legacy mux argv entries even when a -- separator is present", () => {
     expect(
       getMuxDeepLinksFromArgv([
         "electron",
         ".",
         "--",
         "./src/cli/index.ts",
+        "steward://chat/new?project=steward",
         "mux://chat/new?project=mux",
       ])
-    ).toEqual(["mux://chat/new?project=mux"]);
+    ).toEqual(["steward://chat/new?project=steward", "mux://chat/new?project=mux"]);
   });
 
   test("ignores non-mux arguments", () => {

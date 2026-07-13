@@ -1,105 +1,93 @@
 <div align="center">
 
-<picture>
-  <source media="(prefers-color-scheme: dark)" srcset="docs/img/white-mux.svg" />
-  <source media="(prefers-color-scheme: light)" srcset="docs/img/black-mux.svg" />
-  <img src="docs/img/black-mux.svg" alt="mux logo" width="18%" />
-</picture>
+<img src="src/browser/assets/logos/white-steward.svg" alt="Steward logo" width="280" />
 
-# Mux - Coding Agent Multiplexer
+# Steward
 
-[![Download](https://img.shields.io/badge/Download-Releases-purple)](https://github.com/coder/mux/releases)
+**Parallel agentic development workspace for desktop and browser**
+
 [![License: AGPL-3.0](https://img.shields.io/badge/License-AGPL%203.0-blue.svg)](LICENSE)
-[![Discord](https://img.shields.io/discord/1446553342699507907?logo=discord&label=Discord)](https://cdr.co/mux-discord)
-[![X (formerly Twitter)](https://img.shields.io/badge/Follow-%40codermux-black?logo=x)](https://x.com/codermux)
+[![Upstream](https://img.shields.io/badge/upstream-coder%2Fmux-5c6ac4)](https://github.com/coder/mux)
+
+[English](#english) · [Türkçe](#türkçe) · [Русский](#русский) · [Français](#français) · [Deutsch](#deutsch) · [Español](#español)
 
 </div>
 
-Mux is a desktop & browser application for parallel agentic development. It enables developers to plan and execute tasks with multiple AI agents on local or remote compute.
+## English
 
-<p><img src="./docs/img/mux-demo.gif" alt="mux product demo" width="100%" /></p>
+Steward lets you plan and execute software tasks with multiple AI agents on local folders, isolated Git worktrees, or remote SSH machines. It combines parallel workspaces, code review, terminal access, browser sessions, workflows, skills, MCP tools, cost tracking, and responsive server mode in one application.
 
-## Features
+Steward is a modified fork of [Coder Mux](https://github.com/coder/mux). It preserves upstream compatibility where that prevents breaking existing workflows, while using the Steward name, command, deep link, and `~/.steward/app` data directory. The legacy `mux` command, `mux://` links, `MUX_ROOT`, and an existing `~/.mux` directory remain supported for migration.
 
-- **Isolated workspaces** with central view on git divergence ([docs](https://mux.coder.com/runtime))
-  - **[Local](https://mux.coder.com/runtime/local)**: run directly in your project directory
-  - **[Worktree](https://mux.coder.com/runtime/worktree)**: git worktrees on your local machine
-  - **[SSH](https://mux.coder.com/runtime/ssh)**: remote execution on a server over SSH
-- **Multi-model** (`sonnet-4-*`, `grok-*`, `gpt-5-*`, `opus-4-*`)
-  - Ollama supported for local LLMs ([docs](https://mux.coder.com/config/models#ollama-local))
-  - OpenRouter supported for long-tail of LLMs ([docs](https://mux.coder.com/config/models#openrouter-cloud))
-- **VS Code Extension**: Jump into Mux workspaces directly from VS Code ([docs](https://mux.coder.com/integrations/vscode-extension))
-- Supporting UI and keybinds for efficiently managing a suite of agents
-- Rich markdown outputs (mermaid diagrams, LaTeX, etc.)
+### Features
 
-Mux has a custom agent loop but much of the core UX is inspired by Claude Code. You'll find familiar features like Plan/Exec mode, vim inputs, `/compact` and new ones
-like [opportunistic compaction](https://mux.coder.com/workspaces/compaction) and [mode prompts](https://mux.coder.com/agents/instruction-files#mode-prompts).
+- Parallel agents with Plan, Exec, and compaction modes
+- Local folders, isolated Git worktrees, and SSH runtimes
+- Anthropic, OpenAI, Google, xAI, DeepSeek, OpenRouter, Amazon Bedrock, Ollama, and custom OpenAI-compatible providers
+- Visual workflow editor, reusable skills, MCP servers, and agent delegation
+- Integrated terminal, browser preview, code review, Git status, and usage tracking
+- Desktop application plus responsive authenticated server mode
+- ACP integration for compatible editors
 
-**[Read the full documentation →](https://mux.coder.com)**
+### Run from source
 
-## Install
+Prerequisites: Git, [Bun](https://bun.sh/), and GNU Make.
 
-Download pre-built binaries from [the releases page](https://github.com/coder/mux/releases) for
-macOS and Linux.
+```bash
+git clone https://github.com/kaannsaydamm/steward.git
+cd steward
+bun install
+make dev
+```
 
-[More on installation →](https://mux.coder.com/install)
+Build and verify:
 
-## Screenshots
+```bash
+make typecheck
+make test
+make build
+```
 
-<!-- Screenshots below are generated from Storybook stories under Docs/README Screenshots -->
-<table>
-<tr>
-<td align="center" width="50%">
-<img src="./docs/img/code-review.webp" alt="Screenshot of code review" width="100%" /><br>
-<sub>Integrated code-review for faster iteration</sub>
-</td>
-<td align="center" width="50%">
-<img src="./docs/img/agent-status.webp" alt="Screenshot of agent status" width="100%" /><br>
-<sub>Agents report their status through the sidebar</sub>
-</td>
-</tr>
-<tr>
-<td align="center" width="50%">
-<img src="./docs/img/git-status.webp" alt="Screenshot of git status" width="100%" /><br>
-<sub>Git divergence UI keeps you looped in on changes and potential conflicts</sub>
-</td>
-<td align="center" width="50%">
-<img src="./docs/img/plan-mermaid.webp" alt="Screenshot of mermaid diagram" width="100%" /><br>
-<sub>Mermaid diagrams make it easier to review complex proposals from the Agent</sub>
-</td>
-</tr>
-<tr>
-<td align="center" colspan="2">
-<img src="./docs/img/costs-tab.webp" alt="Screenshot of costs table" width="50%" /><br>
-<sub>Stay looped in on costs and token consumption</sub>
-</td>
-</tr>
-<tr>
-<td align="center" colspan="2">
-<img src="./docs/img/context-management.webp" alt="Screenshot of context management dialog" width="50%" /><br>
-<sub>Context management dialog keeps compaction controls in one place</sub>
-</td>
-</tr>
-<tr>
-<td align="center" colspan="2">
-<img src="./docs/img/mobile-server-mode.webp" alt="Screenshot of mux mobile UI" width="40%" /><br>
-<sub>Mux server mode has a responsive UI for mobile users</sub>
-</td>
-</tr>
-</table>
+After a build, the CLI entry point is `steward`; `mux` remains a compatibility alias. Provider credentials and other persistent application data are stored under `~/.steward/app` by default. Set `STEWARD_ROOT` to override that location.
 
-## More reading
+The inherited feature documentation is currently available in [`docs/`](docs/) and at the [upstream Mux documentation](https://mux.coder.com/). References to Mux Gateway and Mux Governor identify Coder-operated services and are intentionally unchanged.
 
-See [the documentation](https://mux.coder.com) for more details.
+## Türkçe
+
+Steward; yerel klasörlerde, izole Git worktree'lerinde veya SSH makinelerinde birden fazla AI agent ile paralel yazılım geliştirme ortamıdır. Terminal, tarayıcı, kod inceleme, workflow, skill, MCP, model sağlayıcıları ve maliyet takibini tek masaüstü/web arayüzünde birleştirir.
+
+Proje, [Coder Mux](https://github.com/coder/mux) tabanlı değiştirilmiş bir AGPL forkudur. Ana komut `steward`, veri dizini `~/.steward/app` ve deep link şeması `steward://` olurken eski Mux kurulumları geçiş amacıyla desteklenir. Kaynaktan çalıştırmak için yukarıdaki İngilizce bölümdeki komutları kullanın.
+
+## Русский
+
+Steward — настольная и браузерная среда для параллельной разработки с несколькими AI-агентами. Она объединяет изолированные Git worktree, SSH, терминал, браузер, проверку кода, workflows, skills, MCP, провайдеры моделей и учет расходов.
+
+Это модифицированный AGPL-форк [Coder Mux](https://github.com/coder/mux). Основная команда — `steward`, каталог данных — `~/.steward/app`, схема ссылок — `steward://`; совместимость со старыми установками Mux сохранена для миграции.
+
+## Français
+
+Steward est un espace de développement desktop et web permettant d'exécuter plusieurs agents IA en parallèle. Il réunit worktrees Git isolés, SSH, terminal, navigateur, revue de code, workflows, skills, MCP, fournisseurs de modèles et suivi des coûts.
+
+Il s'agit d'un fork AGPL modifié de [Coder Mux](https://github.com/coder/mux). La commande principale est `steward`, les données sont stockées dans `~/.steward/app` et les liens utilisent `steward://`; la compatibilité Mux est conservée pour la migration.
+
+## Deutsch
+
+Steward ist eine Desktop- und Browser-Arbeitsumgebung für parallele Softwareentwicklung mit mehreren KI-Agenten. Sie vereint isolierte Git-Worktrees, SSH, Terminal, Browser, Code-Review, Workflows, Skills, MCP, Modellanbieter und Kostenübersicht.
+
+Steward ist ein modifizierter AGPL-Fork von [Coder Mux](https://github.com/coder/mux). Der Hauptbefehl lautet `steward`, Daten liegen unter `~/.steward/app` und Links verwenden `steward://`; die Mux-Kompatibilität bleibt für Migrationen erhalten.
+
+## Español
+
+Steward es un entorno de escritorio y navegador para desarrollo paralelo con varios agentes de IA. Integra worktrees Git aislados, SSH, terminal, navegador, revisión de código, workflows, skills, MCP, proveedores de modelos y control de costes.
+
+Es un fork AGPL modificado de [Coder Mux](https://github.com/coder/mux). El comando principal es `steward`, los datos se guardan en `~/.steward/app` y los enlaces usan `steward://`; se conserva la compatibilidad con Mux para facilitar la migración.
 
 ## Development
 
-See [AGENTS.md](./AGENTS.md) for development setup and guidelines.
+Contributor and repository rules are in [`docs/AGENTS.md`](docs/AGENTS.md). Bun and the Makefile are the source of truth for dependency management, tests, and builds.
 
-## License
+## License and attribution
 
-Copyright (C) 2026 Coder Technologies, Inc.
+Copyright (C) 2026 Coder Technologies, Inc. and Steward contributors.
 
-This program is free software: you can redistribute it and/or modify it under the terms of the GNU Affero General Public License as published by the Free Software Foundation, version 3 of the License.
-
-See [LICENSE](./LICENSE) for details.
+Steward is free software distributed under the GNU Affero General Public License version 3. See [LICENSE](LICENSE). Upstream copyright notices and attribution are retained.

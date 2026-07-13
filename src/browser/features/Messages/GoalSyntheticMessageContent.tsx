@@ -67,12 +67,13 @@ function extractFirstParagraph(content: string): string | null {
 export function GoalSyntheticMessageContent(props: GoalSyntheticMessageContentProps): ReactElement {
   const objective = extractObjective(props.content);
   let title = "Continuing active goal";
-  let description = "Mux is taking the next step automatically.";
+  let description = "Steward is taking the next step automatically.";
   let Icon: typeof Target = Target;
 
   if (props.kind === "budget-limit") {
     title = "Goal limit reached";
-    description = extractFirstParagraph(props.content) ?? "Mux is wrapping up the current goal.";
+    description =
+      extractFirstParagraph(props.content) ?? "Steward is wrapping up the current goal.";
     Icon = CircleStop;
   }
 

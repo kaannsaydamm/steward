@@ -1,4 +1,5 @@
 import { os, ORPCError } from "@orpc/server";
+import { access } from "node:fs/promises";
 import { DEFAULT_CODER_ARCHIVE_BEHAVIOR } from "@/common/config/coderArchiveBehavior";
 import * as schemas from "@/common/orpc/schemas";
 import { EXPERIMENT_IDS } from "@/common/constants/experiments";
@@ -100,6 +101,7 @@ import { isWorkspaceArchived } from "@/common/utils/archive";
 import assert from "node:assert/strict";
 import * as fsPromises from "fs/promises";
 import * as path from "node:path";
+import { homedir } from "node:os";
 
 import type { DevToolsEvent } from "@/common/types/devtools";
 import type { WorkflowRunStreamEvent } from "@/common/types/workflow";
@@ -114,7 +116,26 @@ import {
   type SubagentTranscriptArtifactIndexEntry,
 } from "@/node/services/subagentTranscriptArtifacts";
 import { getErrorMessage } from "@/common/utils/errors";
-import { CHAT_FILE_NAME, CHAT_ARCHIVE_FILE_NAME } from "@/common/constants/paths";
+import { CHAT_FILE_NAME, CHAT_ARCHIVE_FILE_NAME, getMuxHome } from "@/common/constants/paths";
+import {
+  installCatalogSkill,
+  searchSkillsCatalog,
+  tryParseSource,
+} from "@/node/services/tools/skillsCatalogFetch";
+import { loadToolGovernance, saveToolGovernance } from "@/node/services/toolGovernanceService";
+import {
+  buildVisualWorkflowSource,
+  deleteVisualWorkflow,
+  listVisualWorkflows,
+  saveVisualWorkflow,
+} from "@/node/services/visualWorkflowService";
+import { generateVisualWorkflowWithAI } from "@/node/services/visualWorkflowAiService";
+import {
+  cancelPendingStewardDataImport,
+  exportStewardData,
+  getPendingStewardDataImport,
+  scheduleStewardDataImport,
+} from "@/node/services/dataArchiveService";
 import { WorkflowRunStore } from "@/node/services/workflows/WorkflowRunStore";
 import { workflowRunStreamHub } from "@/node/services/workflows/workflowRunStreamHub";
 import { discoverWorkflowScripts } from "@/node/services/workflows/workflowScriptDiscovery";
@@ -351,6 +372,7 @@ export async function resolveWorkflowContext(
     onBackgroundRunTerminal?: (event: WorkflowBackgroundRunTerminalEvent) => Promise<void> | void;
     notifyInterruptedBackgroundRunTerminal?: boolean;
     projectPath?: string;
+    requireExperiment?: boolean;
   } = {}
 ): Promise<{
   service: WorkflowService;
@@ -360,7 +382,9 @@ export async function resolveWorkflowContext(
   workspacePath: string;
 }> {
   assert(workspaceId.length > 0, "resolveWorkflowContext: workspaceId is required");
-  assertDynamicWorkflowsEnabled(context);
+  if (options.requireExperiment !== false) {
+    assertDynamicWorkflowsEnabled(context);
+  }
   await context.aiService.waitForInit(workspaceId);
   const metadataResult = await context.aiService.getWorkspaceMetadata(workspaceId);
   if (!metadataResult.success) {
@@ -1865,6 +1889,281 @@ export const router = (authToken?: string) => {
           const result = await readAgentSkill(runtime, discoveryPath, input.skillName);
           return result.package;
         }),
+      catalogSearch: t
+        .input(schemas.agentSkills.catalogSearch.input)
+        .output(schemas.agentSkills.catalogSearch.output)
+        .handler(async ({ input }) => {
+          const [skillsShResult, clawHubResult] = await Promise.allSettled([
+            searchSkillsCatalog(input.query, input.limit),
+            fetch(
+              `https://clawhub.ai/api/v1/search?q=${encodeURIComponent(input.query)}&nonSuspiciousOnly=true`,
+              { signal: AbortSignal.timeout(10_000) }
+            ).then(async (response) => {
+              if (!response.ok) throw new Error(`ClawHub returned status ${response.status}`);
+              return response.json() as Promise<{
+                results?: Array<{
+                  slug?: string;
+                  displayName?: string;
+                  summary?: string;
+                  downloads?: number;
+                  ownerHandle?: string;
+                }>;
+              }>;
+            }),
+          ]);
+
+          if (skillsShResult.status === "rejected" && clawHubResult.status === "rejected") {
+            throw new ORPCError("BAD_GATEWAY", { message: "Skill catalogs are unavailable" });
+          }
+
+          const skills = [];
+          if (skillsShResult.status === "fulfilled") {
+            for (const skill of skillsShResult.value.skills) {
+              if (!/^[a-z0-9]+(?:-[a-z0-9]+)*$/u.test(skill.skillId)) continue;
+              const source = tryParseSource(skill.source);
+              if (!source) continue;
+              const installed = await access(
+                path.join(getMuxHome(), "skills", skill.skillId, "SKILL.md")
+              ).then(
+                () => true,
+                () => false
+              );
+              skills.push({
+                skillId: skill.skillId,
+                name: skill.name,
+                owner: source.owner,
+                repo: source.repo,
+                installs: skill.installs,
+                url: `https://skills.sh/${source.owner}/${source.repo}/${skill.skillId}`,
+                summary: "",
+                source: "skills.sh" as const,
+                installable: true,
+                installed,
+              });
+            }
+          }
+
+          if (clawHubResult.status === "fulfilled") {
+            for (const skill of clawHubResult.value.results?.slice(0, input.limit) ?? []) {
+              if (!skill.slug || !skill.ownerHandle) continue;
+              const safeSkillId = skill.slug
+                .toLowerCase()
+                .replace(/[^a-z0-9]+/gu, "-")
+                .replace(/^-+|-+$/gu, "");
+              if (!safeSkillId || !/^[a-z0-9]+(?:-[a-z0-9]+)*$/u.test(safeSkillId)) continue;
+              const installed = await access(
+                path.join(getMuxHome(), "skills", safeSkillId, "SKILL.md")
+              ).then(
+                () => true,
+                () => false
+              );
+              skills.push({
+                skillId: safeSkillId,
+                name: skill.displayName ?? skill.slug,
+                owner: skill.ownerHandle,
+                installs: skill.downloads ?? 0,
+                url: `https://clawhub.ai/${skill.ownerHandle}/skills/${skill.slug}`,
+                summary: skill.summary ?? "",
+                source: "clawhub" as const,
+                installable: false,
+                installed,
+              });
+            }
+          }
+          return {
+            skills,
+            catalogs: [
+              { source: "skills.sh" as const, available: skillsShResult.status === "fulfilled" },
+              { source: "clawhub" as const, available: clawHubResult.status === "fulfilled" },
+            ],
+          };
+        }),
+      installFromCatalog: t
+        .input(schemas.agentSkills.installFromCatalog.input)
+        .output(schemas.agentSkills.installFromCatalog.output)
+        .handler(async ({ input }) => {
+          try {
+            await installCatalogSkill({
+              ...input,
+              skillsRoot: path.join(getMuxHome(), "skills"),
+            });
+            return { success: true };
+          } catch (error) {
+            return { success: false, error: getErrorMessage(error) };
+          }
+        }),
+    },
+    toolGovernance: {
+      get: t
+        .input(schemas.toolGovernance.get.input)
+        .output(schemas.toolGovernance.get.output)
+        .handler(({ context }) => loadToolGovernance(context.config.rootDir)),
+      set: t
+        .input(schemas.toolGovernance.set.input)
+        .output(schemas.toolGovernance.set.output)
+        .handler(({ context, input }) => saveToolGovernance(context.config.rootDir, input)),
+      listAudit: t
+        .input(schemas.toolGovernance.listAudit.input)
+        .output(schemas.toolGovernance.listAudit.output)
+        .handler(({ context, input }) => context.toolAuditService.list(input)),
+      clearAudit: t
+        .input(schemas.toolGovernance.clearAudit.input)
+        .output(schemas.toolGovernance.clearAudit.output)
+        .handler(async ({ context }) => {
+          await context.toolAuditService.clear();
+          return { success: true as const };
+        }),
+    },
+    visualWorkflows: {
+      list: t
+        .input(schemas.visualWorkflows.list.input)
+        .output(schemas.visualWorkflows.list.output)
+        .handler(({ context }) => listVisualWorkflows(context.config.rootDir)),
+      save: t
+        .input(schemas.visualWorkflows.save.input)
+        .output(schemas.visualWorkflows.save.output)
+        .handler(({ context, input }) => saveVisualWorkflow(context.config.rootDir, input)),
+      compile: t
+        .input(schemas.visualWorkflows.compile.input)
+        .output(schemas.visualWorkflows.compile.output)
+        .handler(({ input }) => ({
+          source: buildVisualWorkflowSource({ ...input, updatedAt: 0 }),
+        })),
+      generate: t
+        .input(schemas.visualWorkflows.generate.input)
+        .output(schemas.visualWorkflows.generate.output)
+        .handler(async ({ context, input }) => {
+          try {
+            return await generateVisualWorkflowWithAI({
+              aiService: context.aiService,
+              workspaceId: input.workspaceId,
+              model: input.model,
+              request: input.request,
+              current: input.current,
+            });
+          } catch (cause) {
+            throw new ORPCError("BAD_REQUEST", { message: getErrorMessage(cause) });
+          }
+        }),
+      run: t
+        .input(schemas.visualWorkflows.run.input)
+        .output(schemas.visualWorkflows.run.output)
+        .handler(async ({ context, input }) => {
+          const { service, runtime, workspacePath, projectTrusted } = await resolveWorkflowContext(
+            context,
+            input.workspaceId,
+            { requireExperiment: false }
+          );
+          const script = await resolveWorkflowScript({
+            scriptPath: `skill://${input.slug}/workflow.js`,
+            runtime,
+            workspacePath,
+            projectTrusted,
+          });
+          return service.startWorkflowInBackground({
+            script,
+            workspaceId: input.workspaceId,
+            projectTrusted,
+            args: { input: input.input },
+          });
+        }),
+      remove: t
+        .input(schemas.visualWorkflows.remove.input)
+        .output(schemas.visualWorkflows.remove.output)
+        .handler(async ({ context, input }) => {
+          await deleteVisualWorkflow(context.config.rootDir, input.slug);
+          return { success: true as const };
+        }),
+    },
+    dataArchive: {
+      export: t
+        .input(schemas.dataArchive.export.input)
+        .output(schemas.dataArchive.export.output)
+        .handler(async ({ context, input }) => ({
+          archivePath: await exportStewardData(context.config.rootDir, input.archivePath),
+        })),
+      scheduleImport: t
+        .input(schemas.dataArchive.scheduleImport.input)
+        .output(schemas.dataArchive.scheduleImport.output)
+        .handler(async ({ context, input }) => ({
+          archivePath: await scheduleStewardDataImport(context.config.rootDir, input.archivePath),
+          restartRequired: true as const,
+        })),
+      getPendingImport: t
+        .input(schemas.dataArchive.getPendingImport.input)
+        .output(schemas.dataArchive.getPendingImport.output)
+        .handler(async ({ context }) => ({
+          archivePath: await getPendingStewardDataImport(context.config.rootDir),
+          dataRoot: context.config.rootDir,
+          defaultExportPath: path.join(
+            homedir(),
+            "Downloads",
+            `steward-${new Date().toISOString().slice(0, 10)}.steward.tgz`
+          ),
+        })),
+      cancelPendingImport: t
+        .input(schemas.dataArchive.cancelPendingImport.input)
+        .output(schemas.dataArchive.cancelPendingImport.output)
+        .handler(async ({ context }) => {
+          await cancelPendingStewardDataImport(context.config.rootDir);
+          return { success: true as const };
+        }),
+    },
+    schedules: {
+      list: t
+        .input(schemas.schedules.list.input)
+        .output(schemas.schedules.list.output)
+        .handler(async ({ context }) =>
+          (await context.schedulerService.list()).map((job) => ({
+            ...job,
+            nextRunAt: context.schedulerService.getNextRunAt(job),
+          }))
+        ),
+      create: t
+        .input(schemas.schedules.create.input)
+        .output(schemas.schedules.create.output)
+        .handler(async ({ context, input }) => {
+          const job = await context.schedulerService.create(input);
+          return { ...job, nextRunAt: context.schedulerService.getNextRunAt(job) };
+        }),
+      setEnabled: t
+        .input(schemas.schedules.setEnabled.input)
+        .output(schemas.schedules.setEnabled.output)
+        .handler(async ({ context, input }) => {
+          const job = await context.schedulerService.setEnabled(input.id, input.enabled);
+          return { ...job, nextRunAt: context.schedulerService.getNextRunAt(job) };
+        }),
+      runNow: t
+        .input(schemas.schedules.runNow.input)
+        .output(schemas.schedules.runNow.output)
+        .handler(async ({ context, input }) => {
+          const job = await context.schedulerService.runNow(input.id);
+          return { ...job, nextRunAt: context.schedulerService.getNextRunAt(job) };
+        }),
+      remove: t
+        .input(schemas.schedules.remove.input)
+        .output(schemas.schedules.remove.output)
+        .handler(async ({ context, input }) => {
+          await context.schedulerService.remove(input.id);
+          return { success: true as const };
+        }),
+    },
+    telegram: {
+      get: t
+        .input(schemas.telegram.get.input)
+        .output(schemas.telegram.get.output)
+        .handler(async ({ context }) => ({
+          config: await context.telegramBridgeService.getConfig(),
+          status: context.telegramBridgeService.getStatus(),
+        })),
+      set: t
+        .input(schemas.telegram.set.input)
+        .output(schemas.telegram.set.output)
+        .handler(({ context, input }) => context.telegramBridgeService.saveConfig(input)),
+      test: t
+        .input(schemas.telegram.test.input)
+        .output(schemas.telegram.test.output)
+        .handler(({ context }) => context.telegramBridgeService.testConnection()),
     },
     workflows: {
       listRuns: t
@@ -2192,6 +2491,12 @@ export const router = (authToken?: string) => {
         .handler(({ context, input }) =>
           context.providerService.setModels(input.provider, input.models)
         ),
+      fetchCustomProviderModels: t
+        .input(schemas.providers.fetchCustomProviderModels.input)
+        .output(schemas.providers.fetchCustomProviderModels.output)
+        .handler(async ({ context, input }) => ({
+          models: await context.providerService.fetchCustomProviderModels(input.provider),
+        })),
       onConfigChanged: t
         .input(schemas.providers.onConfigChanged.input)
         .output(schemas.providers.onConfigChanged.output)
@@ -2735,6 +3040,188 @@ export const router = (authToken?: string) => {
         }),
     },
     mcp: {
+      registrySearch: t
+        .input(schemas.mcp.registrySearch.input)
+        .output(schemas.mcp.registrySearch.output)
+        .handler(async ({ input }) => {
+          const officialUrl = new URL("https://registry.modelcontextprotocol.io/v0.1/servers");
+          officialUrl.searchParams.set("search", input.query);
+          officialUrl.searchParams.set("limit", String(Math.min(input.limit * 3, 100)));
+          const smitheryUrl = new URL("https://api.smithery.ai/servers");
+          smitheryUrl.searchParams.set("q", input.query);
+          smitheryUrl.searchParams.set("pageSize", String(input.limit));
+          const glamaUrl = new URL("https://glama.ai/api/mcp/v1/servers");
+          glamaUrl.searchParams.set("query", input.query);
+          glamaUrl.searchParams.set("first", String(input.limit));
+
+          const fetchJson = async (url: URL): Promise<unknown> => {
+            const response = await fetch(url, { signal: AbortSignal.timeout(10_000) });
+            if (!response.ok) throw new Error(`${url.hostname} returned status ${response.status}`);
+            return response.json();
+          };
+          const [officialResult, smitheryResult, glamaResult] = await Promise.allSettled([
+            fetchJson(officialUrl),
+            fetchJson(smitheryUrl),
+            fetchJson(glamaUrl),
+          ]);
+          if (
+            officialResult.status === "rejected" &&
+            smitheryResult.status === "rejected" &&
+            glamaResult.status === "rejected"
+          ) {
+            throw new ORPCError("BAD_GATEWAY", { message: "MCP catalogs are unavailable" });
+          }
+
+          const payload = (officialResult.status === "fulfilled" ? officialResult.value : {}) as {
+            servers?: Array<{
+              server?: {
+                name?: string;
+                description?: string;
+                repository?: { url?: string };
+                remotes?: Array<{ type?: string; url?: string; headers?: unknown[] }>;
+                packages?: Array<{
+                  identifier?: string;
+                  runtimeHint?: string;
+                  runtimeArguments?: Array<{ value?: string }>;
+                  environmentVariables?: Array<{ name?: string; default?: string }>;
+                  transport?: { type?: string };
+                }>;
+                _meta?: {
+                  "io.modelcontextprotocol.registry/publisher-provided"?: { title?: string };
+                };
+              };
+            }>;
+          };
+
+          const servers: Array<{
+            name: string;
+            title: string;
+            description: string;
+            source: "official" | "smithery" | "glama";
+            transport?: "stdio" | "http";
+            value?: string;
+            repositoryUrl?: string;
+            catalogUrl: string;
+            installable: boolean;
+            requiresConfiguration: boolean;
+          }> = [];
+          const seenServerNames = new Set<string>();
+
+          for (const entry of payload.servers ?? []) {
+            const server = entry.server;
+            if (!server?.name || seenServerNames.has(server.name)) continue;
+            const title =
+              server._meta?.["io.modelcontextprotocol.registry/publisher-provided"]?.title ??
+              server.name;
+            const remote = server.remotes?.find(
+              (candidate) => candidate.type === "streamable-http" && candidate.url
+            );
+            if (remote?.url) {
+              servers.push({
+                name: server.name,
+                title,
+                description: server.description ?? "",
+                source: "official",
+                transport: "http",
+                value: remote.url,
+                repositoryUrl: server.repository?.url,
+                catalogUrl: server.repository?.url ?? "https://registry.modelcontextprotocol.io",
+                installable: true,
+                requiresConfiguration: (remote.headers?.length ?? 0) > 0,
+              });
+              seenServerNames.add(server.name);
+              if (servers.length >= input.limit) break;
+              continue;
+            }
+
+            const packageConfig = server.packages?.find(
+              (candidate) =>
+                candidate.transport?.type === "stdio" &&
+                candidate.runtimeHint &&
+                candidate.identifier
+            );
+            if (!packageConfig?.runtimeHint || !packageConfig.identifier) continue;
+            const args = (packageConfig.runtimeArguments ?? [])
+              .map((argument) => argument.value)
+              .filter((value): value is string => Boolean(value));
+            servers.push({
+              name: server.name,
+              title,
+              description: server.description ?? "",
+              source: "official",
+              transport: "stdio",
+              value: [packageConfig.runtimeHint, ...args, packageConfig.identifier].join(" "),
+              repositoryUrl: server.repository?.url,
+              catalogUrl: server.repository?.url ?? "https://registry.modelcontextprotocol.io",
+              installable: true,
+              requiresConfiguration: (packageConfig.environmentVariables ?? []).some(
+                (variable) => variable.default == null
+              ),
+            });
+            seenServerNames.add(server.name);
+            if (servers.length >= input.limit) break;
+          }
+
+          if (smitheryResult.status === "fulfilled") {
+            const smithery = smitheryResult.value as {
+              servers?: Array<{
+                qualifiedName?: string;
+                displayName?: string;
+                description?: string;
+                homepage?: string;
+              }>;
+            };
+            for (const server of smithery.servers ?? []) {
+              if (!server.qualifiedName) continue;
+              servers.push({
+                name: server.qualifiedName,
+                title: server.displayName ?? server.qualifiedName,
+                description: server.description ?? "",
+                source: "smithery",
+                catalogUrl:
+                  server.homepage ?? `https://smithery.ai/servers/${server.qualifiedName}`,
+                installable: false,
+                requiresConfiguration: true,
+              });
+            }
+          }
+
+          if (glamaResult.status === "fulfilled") {
+            const glama = glamaResult.value as {
+              servers?: Array<{
+                id?: string;
+                name?: string;
+                namespace?: string;
+                slug?: string;
+                description?: string;
+                url?: string;
+                repository?: { url?: string };
+              }>;
+            };
+            for (const server of glama.servers ?? []) {
+              if (!server.id || !server.name) continue;
+              servers.push({
+                name: [server.namespace, server.slug].filter(Boolean).join("/") || server.id,
+                title: server.name,
+                description: server.description ?? "",
+                source: "glama",
+                repositoryUrl: server.repository?.url,
+                catalogUrl: server.url ?? `https://glama.ai/mcp/servers/${server.id}`,
+                installable: false,
+                requiresConfiguration: true,
+              });
+            }
+          }
+
+          return {
+            servers,
+            catalogs: [
+              { source: "official", available: officialResult.status === "fulfilled" },
+              { source: "smithery", available: smitheryResult.status === "fulfilled" },
+              { source: "glama", available: glamaResult.status === "fulfilled" },
+            ],
+          };
+        }),
       list: t
         .input(schemas.mcp.list.input)
         .output(schemas.mcp.list.output)

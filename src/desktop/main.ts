@@ -68,8 +68,8 @@ import {
 // before the ready event. sanitizeMuxChildEnv strips CHROME_DESKTOP from child
 // processes so apps launched from mux terminals don't inherit our identity.
 if (process.platform === "linux") {
-  app.setName("mux");
-  process.env.CHROME_DESKTOP = "mux.desktop";
+  app.setName("Steward");
+  process.env.CHROME_DESKTOP = "steward.desktop";
 }
 
 // Enable local crash dump collection so renderer SIGSEGV produces a minidump
@@ -304,14 +304,16 @@ function registerMuxProtocolClient() {
     });
 
     if (registration) {
+      app.setAsDefaultProtocolClient("steward", registration.executable, registration.args);
       app.setAsDefaultProtocolClient("mux", registration.executable, registration.args);
       return;
     }
 
+    app.setAsDefaultProtocolClient("steward");
     app.setAsDefaultProtocolClient("mux");
   } catch (error) {
     // Best-effort: never crash startup if protocol registration fails.
-    console.debug("[deep-link] Failed to register mux:// protocol handler:", error);
+    console.debug("[deep-link] Failed to register Steward protocol handlers:", error);
   }
 }
 
@@ -450,7 +452,7 @@ function loadTrayIconImage() {
   return image;
 }
 
-function openMuxFromTray() {
+function openStewardFromTray() {
   if (mainWindow) {
     if (mainWindow.isMinimized()) mainWindow.restore();
     mainWindow.show();
@@ -461,7 +463,7 @@ function openMuxFromTray() {
   // On macOS the app stays open after all windows are closed; recreate the window.
   if (process.platform === "darwin") {
     if (!services) {
-      console.warn(`[${timestamp()}] [tray] Cannot open mux (services not loaded yet)`);
+      console.warn(`[${timestamp()}] [tray] Cannot open Steward (services not loaded yet)`);
       return;
     }
 
@@ -499,9 +501,9 @@ function createTray() {
 
   const menu = Menu.buildFromTemplate([
     {
-      label: "Open mux",
+      label: "Open Steward",
       click: () => {
-        openMuxFromTray();
+        openStewardFromTray();
       },
     },
     {
@@ -513,6 +515,7 @@ function createTray() {
   ]);
 
   tray.setContextMenu(menu);
+  tray.setToolTip("Steward");
 
   // Best-effort: update tray icon when OS appearance changes.
   nativeTheme.on("updated", () => {
@@ -591,6 +594,20 @@ async function loadServices(): Promise<void> {
   const startTime = Date.now();
   console.log(`[${timestamp()}] Loading services...`);
 
+  const { applyPendingStewardDataImport, cancelPendingStewardDataImport } =
+    await import("../node/services/dataArchiveService");
+  try {
+    if (await applyPendingStewardDataImport(getMuxHome())) {
+      console.log(`[${timestamp()}] Applied pending Steward data import`);
+    }
+  } catch (error) {
+    console.error(
+      "Failed to apply pending Steward data import; continuing with existing data",
+      error
+    );
+    await cancelPendingStewardDataImport(getMuxHome());
+  }
+
   /* eslint-disable no-restricted-syntax */
   // Dynamic imports are justified here for performance:
   // - ServiceContainer transitively imports the entire AI SDK (ai, @ai-sdk/anthropic, etc.)
@@ -626,7 +643,7 @@ async function loadServices(): Promise<void> {
   // Keep PATH-related recovery honest: Settings can re-check the current process view, but
   // shell/profile changes made after launch still need a full app relaunch to rerun startup PATH setup.
   services.windowService.setRestartAppHandler(() => {
-    assert(app, "Electron app must be available to restart mux");
+    assert(app, "Electron app must be available to restart Steward");
     app.relaunch();
     app.quit();
   });
@@ -900,7 +917,7 @@ function createWindow() {
       // full of code, paths, and identifiers that trigger noisy red squiggles.
       spellcheck: false,
     },
-    title: "mux - coder multiplexer",
+    title: "Steward - Agent Workspace",
     // Hide menu bar on Linux by default (like VS Code)
     // User can press Alt to toggle it
     autoHideMenuBar: process.platform === "linux",
@@ -945,7 +962,7 @@ function createWindow() {
         defaultId: 0,
         cancelId: 2,
         message: "An update is ready to install.",
-        detail: "Install now to restart and apply the update, or keep Mux running in the tray.",
+        detail: "Install now to restart and apply the update, or keep Steward running in the tray.",
       };
 
       const promptWindow = mainWindow;
@@ -1261,7 +1278,7 @@ if (gotTheLock) {
     // hidden by close-to-tray.
     // Guard: services must be loaded (prevents race if activate fires during startup).
     if (app.isReady() && services) {
-      openMuxFromTray();
+      openStewardFromTray();
     }
   });
 }

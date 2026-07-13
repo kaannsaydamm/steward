@@ -313,7 +313,7 @@ function collectMcpServers(value: string, previous: MCPServerEntry[]): MCPServer
 const program = new Command();
 
 program
-  .name("mux run")
+  .name("steward run")
   .description("Run an agent session in the current directory")
   .argument("[message...]", "instruction for the agent (can also be piped via stdin)")
   .option("-d, --dir <path>", "project directory", process.cwd())

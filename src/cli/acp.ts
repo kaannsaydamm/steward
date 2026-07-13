@@ -103,9 +103,9 @@ async function installAcpLogFileRedirect(logFilePath: string): Promise<() => Pro
 let cleanupAcpLogRedirect: (() => Promise<void>) | undefined;
 
 program
-  .name("mux acp")
+  .name("steward acp")
   .description("ACP (Agent-Client Protocol) stdio interface for editor integration")
-  .option("--server-url <url>", "URL of a running mux server")
+  .option("--server-url <url>", "URL of a running Steward server")
   .option("--auth-token <token>", "Auth token for server connection")
   .option("--log-file <path>", "Write ACP logs to a file instead of stderr")
   .action(async (options: Record<string, unknown>) => {
@@ -121,7 +121,7 @@ program
       cleanupAcpLogRedirect = await installAcpLogFileRedirect(logFile);
     }
 
-    console.error("[acp] Connecting to mux server…");
+    console.error("[acp] Connecting to Steward server…");
     const connection = await connectToServer({
       serverUrl: serverUrl ?? process.env.MUX_SERVER_URL,
       authToken: authToken ?? process.env.MUX_SERVER_AUTH_TOKEN,
