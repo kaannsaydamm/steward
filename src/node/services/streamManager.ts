@@ -906,7 +906,7 @@ export class StreamManager extends EventEmitter {
 
   /**
    * Create a temporary directory for a stream token
-   * Use ~/.mux-tmp instead of system temp directory (e.g., /var/folders/...)
+   * Use ~/.steward/app/tmp instead of system temp directory (e.g., /var/folders/...)
    * because macOS user-scoped temp paths are extremely long, which leads to:
    * - Agent mistakes when copying/manipulating paths
    * - Harder to read in tool outputs
