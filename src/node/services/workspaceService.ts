@@ -1,3 +1,5 @@
+import { TASK_TERMINATION_STOP_STREAM_TIMEOUT_MS } from "@/constants/terminationTimeouts";
+import { raceWithAbortAndTimeout } from "@/node/utils/concurrency/withTimeout";
 import { EventEmitter } from "events";
 import * as path from "path";
 import * as fsPromises from "fs/promises";
@@ -4122,11 +4124,23 @@ export class WorkspaceService extends EventEmitter {
         : undefined;
 
       try {
-        const stopResult = await this.aiService.stopStream(workspaceId, { abandonPartial: true });
-        if (!stopResult.success) {
+        const stopPromise = this.aiService.stopStream(workspaceId, { abandonPartial: true });
+        const stopOutcome = await raceWithAbortAndTimeout(stopPromise, {
+          timeoutMs: TASK_TERMINATION_STOP_STREAM_TIMEOUT_MS,
+        });
+        if (stopOutcome.kind !== "ok") {
+          void stopPromise.catch((error: unknown) => {
+            log.debug("Timed-out workspace removal stopStream later threw", {
+              workspaceId,
+              error,
+            });
+          });
+          return Err("Timed out stopping workspace stream; workspace was not removed");
+        }
+        if (!stopOutcome.value.success) {
           log.debug("Failed to stop stream during workspace removal", {
             workspaceId,
-            error: stopResult.error,
+            error: stopOutcome.value.error,
           });
         }
       } catch (error: unknown) {
@@ -7122,6 +7136,27 @@ export class WorkspaceService extends EventEmitter {
     } catch (error) {
       const message = getErrorMessage(error);
       return Err(`Failed to update workspace AI settings: ${message}`);
+    }
+  }
+
+  /**
+   * Mid-turn thinking change: forward the requested level to the workspace's
+   * active turn (if any). Deliberately `sessions.get`, not getOrCreateSession —
+   * creating a session to tell it "change the turn you don't have" is pointless;
+   * persisted settings already cover the next turn.
+   */
+  setActiveTurnThinkingLevel(
+    workspaceId: string,
+    level: ThinkingLevel
+  ): Result<{ accepted: boolean }, string> {
+    try {
+      const session = this.sessions.get(workspaceId.trim());
+      if (!session) {
+        return Ok({ accepted: false });
+      }
+      return Ok(session.setActiveTurnThinkingLevel(level));
+    } catch (error) {
+      return Err(`Failed to set active-turn thinking level: ${getErrorMessage(error)}`);
     }
   }
 
