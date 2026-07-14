@@ -316,6 +316,16 @@
         "sha256"
       ]
     },
+    "nsis": {
+      "oneClick": false,
+      "allowElevation": true,
+      "allowToChangeInstallationDirectory": true,
+      "license": "LICENSE",
+      "createDesktopShortcut": "always",
+      "createStartMenuShortcut": true,
+      "shortcutName": "Steward",
+      "runAfterFinish": true
+    },
     "npmRebuild": false,
     "buildDependenciesFromSource": false
   },
